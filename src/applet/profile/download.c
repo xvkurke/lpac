@@ -90,7 +90,8 @@ exit:
 }
 
 static bool is_ascii_alphanumeric(char character) {
-    return (character >= '0' && character <= '9') || (character >= 'A' && character <= 'Z') ||
+    return (character >= '0' && character <= '9') ||
+           (character >= 'A' && character <= 'Z') ||
            (character >= 'a' && character <= 'z');
 }
 
