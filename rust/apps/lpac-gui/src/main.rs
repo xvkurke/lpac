@@ -38,6 +38,8 @@ fn main() -> eframe::Result<()> {
 }
 
 fn configure_ui(context: &egui::Context) {
+    context.set_theme(egui::Theme::Light);
+
     let mut visuals = egui::Visuals::light();
     visuals.override_text_color = Some(egui::Color32::from_rgb(30, 41, 59));
     visuals.panel_fill = egui::Color32::from_rgb(245, 247, 250);
@@ -54,7 +56,7 @@ fn configure_ui(context: &egui::Context) {
     visuals.widgets.hovered.fg_stroke.color = egui::Color32::from_rgb(30, 64, 175);
     visuals.widgets.active.bg_fill = egui::Color32::from_rgb(37, 99, 235);
     visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
-    context.set_visuals(visuals);
+    context.set_visuals_of(egui::Theme::Light, visuals);
 
     let mut style = (*context.style_of(egui::Theme::Light)).clone();
     style.spacing.item_spacing = egui::vec2(10.0, 8.0);
