@@ -89,20 +89,12 @@ exit:
     return fret;
 }
 
-static bool is_ascii_alphanumeric(char character) {
-    if (character >= '0' && character <= '9')
-        return true;
-    if (character >= 'A' && character <= 'Z')
-        return true;
-    return character >= 'a' && character <= 'z';
-}
-
-static bool is_strict_matching_id(const char *token) {
+static bool is_valid_matching_id(const char *token) {
     const size_t n = strlen(token);
     for (size_t i = 0; i < n; i++) {
-        if (is_ascii_alphanumeric(token[i]) || token[i] == '-')
-            continue;
-        return false;
+        const unsigned char character = (unsigned char)token[i];
+        if (character < 0x21 || character > 0x7e || character == '$')
+            return false;
     }
     return true;
 }
@@ -265,9 +257,9 @@ static int applet_main(int argc, char **argv) {
                 break;
             case 2: // AC_Token or Matching ID
                 matchingId = strdup(token);
-                if (!is_strict_matching_id(matchingId)) {
+                if (!is_valid_matching_id(matchingId)) {
                     error_function_name = "matching_id";
-                    error_detail = strdup("invalid format, contains character not alphanumeric or dash");
+                    error_detail = strdup("invalid format, contains whitespace or non-printable character");
                     goto err;
                 }
                 break;
