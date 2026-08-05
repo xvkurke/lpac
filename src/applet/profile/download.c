@@ -8,7 +8,6 @@
 #include <euicc/tostr.h>
 #include <lpac/utils.h>
 
-#include <ctype.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -90,10 +89,15 @@ exit:
     return fret;
 }
 
+static bool is_ascii_alphanumeric(char character) {
+    return (character >= '0' && character <= '9') || (character >= 'A' && character <= 'Z') ||
+           (character >= 'a' && character <= 'z');
+}
+
 static bool is_strict_matching_id(const char *token) {
     const size_t n = strlen(token);
     for (size_t i = 0; i < n; i++) {
-        if (isalnum(token[i]) || token[i] == '-')
+        if (is_ascii_alphanumeric(token[i]) || token[i] == '-')
             continue;
         return false;
     }
