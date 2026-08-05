@@ -100,6 +100,15 @@ impl ActivationJob {
     }
 }
 
+impl Drop for ActivationJob {
+    fn drop(&mut self) {
+        self.activation_code.zeroize();
+        if let Some(confirmation_code) = self.confirmation_code.as_mut() {
+            confirmation_code.zeroize();
+        }
+    }
+}
+
 impl fmt::Debug for ActivationJob {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -234,6 +243,17 @@ mod tests {
         let decoded = decrypt_job(&envelope, &key).unwrap();
         assert_eq!(decoded.activation_code, code.expose());
         assert!(!envelope.contains("rsp.example"));
+    }
+
+    #[test]
+    fn debug_output_redacts_activation_secrets() {
+        let code = ActivationCode::parse("LPA:1$rsp.example$MATCH-123").unwrap();
+        let job = ActivationJob::new(&code, None, None, Some("4321".into()));
+        let debug = format!("{job:?}");
+
+        assert!(!debug.contains("rsp.example"));
+        assert!(!debug.contains("MATCH-123"));
+        assert!(!debug.contains("4321"));
     }
 
     #[test]
