@@ -95,13 +95,33 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force desktop-bundle/driver | Out-Null
+          Copy-Item desktop-bundle/driver_*.dll desktop-bundle/driver/ -Force
           Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-gui.exe
           Copy-Item rust/README.md desktop-bundle/NIK-LPA-README.md
           @'
           @echo off
           cd /d "%~dp0"
+          set "PATH=%CD%;%CD%\lib;%PATH%"
           ".\nik-lpa-gui.exe"
           '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
+
+      - name: Smoke-test Windows lpac runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Push-Location desktop-bundle
+          try {
+            $env:PATH = "$PWD;$PWD\lib;$env:PATH"
+            & .\lpac.exe version
+            if ($LASTEXITCODE -ne 0) { throw "lpac version failed" }
+            & .\lpac.exe driver list
+            if ($LASTEXITCODE -ne 0) { throw "lpac driver list failed" }
+          } finally {
+            Pop-Location
+          }
 
       - name: Download matching Linux lpac runtime
         if: runner.os == 'Linux'
@@ -145,6 +165,15 @@ jobs:
           exec ./nik-lpa-gui "$@"
           EOF
           chmod +x desktop-bundle/nik-lpa-gui desktop-bundle/lpac desktop-bundle/run-nik-lpa.sh
+
+      - name: Smoke-test Linux lpac runtime
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd desktop-bundle
+          ./lpac version
+          ./lpac driver list
 
       - name: Upload desktop bundle
         uses: actions/upload-artifact@v4
