@@ -1,5 +1,5 @@
 use eframe::egui;
-use lpac_backend::LegacyLpacBackend;
+use lpac_backend::{LegacyLpacBackend, LpacRun};
 use lpac_core::{
     ActivationCode, ActivationJob, encode_transfer_key, encrypt_job, generate_transfer_key,
 };
@@ -46,9 +46,9 @@ impl LpaApp {
             .with_reader_index(self.reader_index.parse::<u32>().ok())
     }
 
-    fn show_result(&mut self, result: anyhow::Result<serde_json::Value>) {
+    fn show_result(&mut self, result: anyhow::Result<LpacRun>) {
         self.output = match result {
-            Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()),
+            Ok(run) => run.pretty_log(),
             Err(error) => format!("ERROR: {error:#}"),
         };
     }
