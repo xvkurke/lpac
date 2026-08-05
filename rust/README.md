@@ -80,6 +80,8 @@ cargo run -p lpac-gui
 
 Place the patched `lpac` executable next to the GUI or select its path in the application.
 
+The CI artifacts named `nik-lpa-windows-x86_64` and `nik-lpa-linux-x86_64` currently contain the Rust GUI binary and this README. They are not yet standalone bundles: a compatible patched `lpac` runtime and its driver libraries must be supplied separately or selected in the GUI.
+
 ## Integration coverage
 
 The `fake-lpac` harness verifies that:
