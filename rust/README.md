@@ -7,7 +7,7 @@ The C implementation remains the single owner of the eUICC, PC/SC connection, AP
 ## Components
 
 - `lpac-core`: strict activation-code parsing, redacted secret types, encrypted activation jobs, and `NIKLPA1` transfer envelopes.
-- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, and post-install verification.
+- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, reader discovery, and post-install verification.
 - `lpac-gui`: native egui/eframe application for PC/SC laboratory use.
 - `fake-lpac`: deterministic process-level test harness for backend and secret-boundary tests.
 
@@ -15,7 +15,8 @@ The C implementation remains the single owner of the eUICC, PC/SC connection, AP
 
 The GUI currently provides:
 
-- selection of the `lpac` executable and PC/SC reader index;
+- explicit PC/SC reader discovery through `lpac driver apdu list`;
+- manual reader-index fallback;
 - eUICC information lookup;
 - profile listing;
 - local profile installation from an activation string;
@@ -78,14 +79,38 @@ cargo test --workspace
 cargo run -p lpac-gui
 ```
 
-Place the patched `lpac` executable next to the GUI or select its path in the application.
+For a local development build, place the patched `lpac` executable next to the GUI, keep its driver/runtime layout intact, or select its path in the application.
 
-The CI artifacts named `nik-lpa-windows-x86_64` and `nik-lpa-linux-x86_64` currently contain the Rust GUI binary and this README. They are not yet standalone bundles: a compatible patched `lpac` runtime and its driver libraries must be supplied separately or selected in the GUI.
+## Desktop bundles
+
+CI publishes:
+
+- `nik-lpa-desktop-windows-x86_64`
+- `nik-lpa-desktop-linux-x86_64`
+
+Each bundle contains:
+
+- the Rust GUI;
+- the patched `lpac` executable from the same head SHA;
+- PC/SC and HTTP driver libraries;
+- the C runtime libraries and license files;
+- a platform launcher that starts the GUI from the bundle directory.
+
+Use `run-nik-lpa.cmd` on Windows or `run-nik-lpa.sh` on Linux.
+
+System requirements remain external:
+
+- Windows Smart Card service must be running;
+- Linux requires `pcscd` and the normal desktop/OpenGL runtime dependencies;
+- a compatible PC/SC reader and removable eUICC must be connected for hardware operations.
+
+The packaging workflow smoke-tests the bundled `lpac` runtime with `lpac version` and `lpac driver list` before upload. Hardware access is not exercised in hosted CI.
 
 ## Integration coverage
 
 The `fake-lpac` harness verifies that:
 
+- PC/SC readers are discovered through `lpac` without opening a second card connection;
 - activation and confirmation codes arrive through stdin;
 - neither secret is present in argv;
 - progress and final NDJSON events are parsed correctly;
@@ -95,8 +120,8 @@ The `fake-lpac` harness verifies that:
 
 ## Roadmap
 
-1. Package the Rust GUI together with a pinned, patched `lpac` runtime for Windows and Linux.
-2. Add reader discovery by name, richer profile-management screens, cancellation, and explicit confirmation dialogs.
+1. Run a hardware smoke test against the target Windows PC/SC reader and removable eUICC.
+2. Add richer profile-management screens, cancellation, and explicit confirmation dialogs.
 3. Replace the laboratory shared-key envelope with recipient public-key encryption and device enrollment.
-4. Add replay fixtures for real sanitized `lpac` event streams and hardware smoke scripts.
+4. Add replay fixtures for sanitized real `lpac` event streams.
 5. Keep the protocol/APDU implementation in `libeuicc` until an independently tested Rust replacement provides a concrete maintenance or safety benefit.
