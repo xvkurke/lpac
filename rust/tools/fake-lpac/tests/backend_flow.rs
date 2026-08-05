@@ -10,6 +10,17 @@ fn backend() -> LegacyLpacBackend {
 }
 
 #[test]
+fn discovers_pcsc_readers_without_selecting_one() {
+    let readers = backend().readers().unwrap();
+
+    assert_eq!(readers.len(), 2);
+    assert_eq!(readers[0].index, 0);
+    assert_eq!(readers[0].name, "NIK Test Reader");
+    assert_eq!(readers[1].index, 1);
+    assert_eq!(readers[1].name, "Backup Test Reader");
+}
+
+#[test]
 fn downloads_through_stdin_and_verifies_profile_list() {
     let code = ActivationCode::parse(ACTIVATION_CODE).unwrap();
     let run = backend()
