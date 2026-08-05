@@ -1,6 +1,8 @@
 use eframe::egui;
 use lpac_backend::LegacyLpacBackend;
-use lpac_core::{encrypt_job, generate_transfer_key, encode_transfer_key, ActivationCode, ActivationJob};
+use lpac_core::{
+    ActivationCode, ActivationJob, encode_transfer_key, encrypt_job, generate_transfer_key,
+};
 
 fn main() -> eframe::Result<()> {
     eframe::run_native(
@@ -23,7 +25,11 @@ struct LpaApp {
 impl Default for LpaApp {
     fn default() -> Self {
         Self {
-            lpac_path: if cfg!(windows) { "lpac.exe".into() } else { "lpac".into() },
+            lpac_path: if cfg!(windows) {
+                "lpac.exe".into()
+            } else {
+                "lpac".into()
+            },
             reader_index: "0".into(),
             activation_code: String::new(),
             confirmation_code: String::new(),
@@ -55,14 +61,16 @@ impl eframe::App for LpaApp {
             ui.label("Rust GUI over the existing, proven lpac/libeuicc engine.");
             ui.separator();
 
-            egui::Grid::new("settings").num_columns(2).show(ui, |ui| {
-                ui.label("lpac executable");
-                ui.text_edit_singleline(&mut self.lpac_path);
-                ui.end_row();
-                ui.label("PC/SC reader index");
-                ui.text_edit_singleline(&mut self.reader_index);
-                ui.end_row();
-            });
+            egui::Grid::new("settings")
+                .num_columns(2)
+                .show(ui, |ui| {
+                    ui.label("lpac executable");
+                    ui.text_edit_singleline(&mut self.lpac_path);
+                    ui.end_row();
+                    ui.label("PC/SC reader index");
+                    ui.text_edit_singleline(&mut self.reader_index);
+                    ui.end_row();
+                });
 
             ui.horizontal(|ui| {
                 if ui.button("Read eUICC info").clicked() {
@@ -77,7 +85,11 @@ impl eframe::App for LpaApp {
 
             ui.separator();
             ui.label("Activation code");
-            ui.add(egui::TextEdit::multiline(&mut self.activation_code).desired_rows(2).password(true));
+            ui.add(
+                egui::TextEdit::multiline(&mut self.activation_code)
+                    .desired_rows(2)
+                    .password(true),
+            );
             ui.label("Confirmation code (optional)");
             ui.add(egui::TextEdit::singleline(&mut self.confirmation_code).password(true));
 
@@ -85,7 +97,8 @@ impl eframe::App for LpaApp {
                 if ui.button("Install profile").clicked() {
                     match ActivationCode::parse(self.activation_code.clone()) {
                         Ok(code) => {
-                            let confirmation = (!self.confirmation_code.is_empty()).then_some(self.confirmation_code.as_str());
+                            let confirmation = (!self.confirmation_code.is_empty())
+                                .then_some(self.confirmation_code.as_str());
                             let result = self.backend().download(&code, confirmation);
                             self.show_result(result);
                         }
@@ -100,7 +113,8 @@ impl eframe::App for LpaApp {
                                 &code,
                                 Some(self.reader_index.clone()),
                                 None,
-                                (!self.confirmation_code.is_empty()).then(|| self.confirmation_code.clone()),
+                                (!self.confirmation_code.is_empty())
+                                    .then(|| self.confirmation_code.clone()),
                             );
                             match encrypt_job(&job, &self.transfer_key) {
                                 Ok(value) => self.transfer_envelope = value,
@@ -123,7 +137,11 @@ impl eframe::App for LpaApp {
 
             ui.separator();
             ui.label("Operation log (activation secrets are not logged)");
-            ui.add(egui::TextEdit::multiline(&mut self.output).desired_rows(14).interactive(false));
+            ui.add(
+                egui::TextEdit::multiline(&mut self.output)
+                    .desired_rows(14)
+                    .interactive(false),
+            );
         });
     }
 }
