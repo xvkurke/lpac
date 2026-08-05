@@ -4,6 +4,7 @@ members = [
     "crates/lpac-core",
     "crates/lpac-backend",
     "apps/lpac-gui",
+    "tools/fake-lpac",
 ]
 
 [workspace.package]
