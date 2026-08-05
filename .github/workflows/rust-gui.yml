@@ -12,6 +12,13 @@ on:
       - "src/applet/profile/download.c"
       - ".github/workflows/rust-gui.yml"
 
+permissions:
+  actions: read
+  contents: read
+
+env:
+  TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -41,28 +48,107 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            artifact: nik-lpa-linux-x86_64
-            binary: rust/target/release/lpac-gui
+            artifact: nik-lpa-desktop-linux-x86_64
           - runner: windows-latest
-            artifact: nik-lpa-windows-x86_64
-            binary: rust/target/release/lpac-gui.exe
+            artifact: nik-lpa-desktop-windows-x86_64
     runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        working-directory: rust
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - name: Install Linux GUI system dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev unzip
       - name: Build release GUI
+        working-directory: rust
         run: cargo build --release -p lpac-gui
-      - name: Upload GUI artifact
+
+      - name: Download matching Windows lpac runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $runId = $null
+          for ($attempt = 0; $attempt -lt 60 -and -not $runId; $attempt++) {
+            $response = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:TARGET_HEAD_SHA&per_page=100" | ConvertFrom-Json
+            $run = $response.workflow_runs | Where-Object { $_.name -eq "Build" } | Select-Object -First 1
+            if ($run) {
+              $runId = $run.id
+              break
+            }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $runId) {
+            throw "No Build workflow run found for $env:TARGET_HEAD_SHA"
+          }
+          gh run watch $runId --exit-status
+          gh run download $runId --pattern "lpac-*-windows-x64" --dir c-artifact
+          $archive = Get-ChildItem c-artifact -Recurse -Filter "lpac-windows-x86_64-mingw.zip" | Select-Object -First 1
+          if (-not $archive) {
+            throw "Windows lpac runtime archive was not found"
+          }
+          New-Item -ItemType Directory -Force desktop-bundle | Out-Null
+          Expand-Archive -Path $archive.FullName -DestinationPath desktop-bundle -Force
+
+      - name: Assemble Windows desktop bundle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-gui.exe
+          Copy-Item rust/README.md desktop-bundle/NIK-LPA-README.md
+          @'
+          @echo off
+          cd /d "%~dp0"
+          ".\nik-lpa-gui.exe"
+          '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
+
+      - name: Download matching Linux lpac runtime
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          for attempt in $(seq 1 60); do
+            run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_HEAD_SHA&per_page=100" --jq '.workflow_runs[] | select(.name == "Build") | .id' | head -n1)"
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo "No Build workflow run found for $TARGET_HEAD_SHA" >&2
+            exit 1
+          fi
+          gh run watch "$run_id" --exit-status
+          gh run download "$run_id" --pattern 'lpac-*-linux-x64' --dir c-artifact
+          archive="$(find c-artifact -type f -name 'lpac-linux-x86_64.zip' -print -quit)"
+          if [ -z "$archive" ]; then
+            echo "Linux lpac runtime archive was not found" >&2
+            exit 1
+          fi
+          mkdir -p desktop-bundle
+          unzip -q "$archive" -d desktop-bundle
+
+      - name: Assemble Linux desktop bundle
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp rust/target/release/lpac-gui desktop-bundle/nik-lpa-gui
+          cp rust/README.md desktop-bundle/NIK-LPA-README.md
+          cat > desktop-bundle/run-nik-lpa.sh <<'EOF'
+          #!/bin/sh
+          cd "$(dirname "$0")"
+          exec ./nik-lpa-gui "$@"
+          EOF
+          chmod +x desktop-bundle/nik-lpa-gui desktop-bundle/lpac desktop-bundle/run-nik-lpa.sh
+
+      - name: Upload desktop bundle
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           if-no-files-found: error
-          path: |
-            ${{ matrix.binary }}
-            rust/README.md
+          path: desktop-bundle
