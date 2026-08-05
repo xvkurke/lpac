@@ -61,16 +61,14 @@ impl eframe::App for LpaApp {
             ui.label("Rust GUI over the existing, proven lpac/libeuicc engine.");
             ui.separator();
 
-            egui::Grid::new("settings")
-                .num_columns(2)
-                .show(ui, |ui| {
-                    ui.label("lpac executable");
-                    ui.text_edit_singleline(&mut self.lpac_path);
-                    ui.end_row();
-                    ui.label("PC/SC reader index");
-                    ui.text_edit_singleline(&mut self.reader_index);
-                    ui.end_row();
-                });
+            egui::Grid::new("settings").num_columns(2).show(ui, |ui| {
+                ui.label("lpac executable");
+                ui.text_edit_singleline(&mut self.lpac_path);
+                ui.end_row();
+                ui.label("PC/SC reader index");
+                ui.text_edit_singleline(&mut self.reader_index);
+                ui.end_row();
+            });
 
             ui.horizontal(|ui| {
                 if ui.button("Read eUICC info").clicked() {
