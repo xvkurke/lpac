@@ -107,11 +107,23 @@ jobs:
           ".\nik-lpa-gui.exe"
           '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
 
-      - name: Smoke-test Windows lpac runtime
+      - name: Smoke-test Windows desktop bundle
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $required = @(
+            "desktop-bundle/lpac.exe",
+            "desktop-bundle/nik-lpa-gui.exe",
+            "desktop-bundle/driver/driver_apdu_pcsc.dll",
+            "desktop-bundle/driver/driver_apdu_stdio.dll",
+            "desktop-bundle/driver/driver_http_stdio.dll",
+            "desktop-bundle/driver/driver_http_winhttp.dll",
+            "desktop-bundle/run-nik-lpa.cmd"
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) { throw "Missing bundle file: $path" }
+          }
           Push-Location desktop-bundle
           try {
             $env:PATH = "$PWD;$PWD\lib;$env:PATH"
@@ -119,8 +131,6 @@ jobs:
             $env:LPAC_HTTP = "stdio"
             & .\lpac.exe version
             if ($LASTEXITCODE -ne 0) { throw "lpac version failed" }
-            & .\lpac.exe driver list
-            if ($LASTEXITCODE -ne 0) { throw "lpac driver list failed" }
           } finally {
             Pop-Location
           }
@@ -164,18 +174,31 @@ jobs:
           cat > desktop-bundle/run-nik-lpa.sh <<'EOF'
           #!/bin/sh
           cd "$(dirname "$0")"
+          export LD_LIBRARY_PATH="$PWD/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           exec ./nik-lpa-gui "$@"
           EOF
           chmod +x desktop-bundle/nik-lpa-gui desktop-bundle/lpac desktop-bundle/run-nik-lpa.sh
 
-      - name: Smoke-test Linux lpac runtime
+      - name: Smoke-test Linux desktop bundle
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
+          required=(
+            desktop-bundle/lpac
+            desktop-bundle/nik-lpa-gui
+            desktop-bundle/driver/driver_apdu_pcsc.so
+            desktop-bundle/driver/driver_apdu_stdio.so
+            desktop-bundle/driver/driver_http_curl.so
+            desktop-bundle/driver/driver_http_stdio.so
+            desktop-bundle/run-nik-lpa.sh
+          )
+          for path in "${required[@]}"; do
+            test -f "$path" || { echo "Missing bundle file: $path" >&2; exit 1; }
+          done
           cd desktop-bundle
+          export LD_LIBRARY_PATH="$PWD/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           LPAC_APDU=stdio LPAC_HTTP=stdio ./lpac version
-          LPAC_APDU=stdio LPAC_HTTP=stdio ./lpac driver list
 
       - name: Upload desktop bundle
         uses: actions/upload-artifact@v4
