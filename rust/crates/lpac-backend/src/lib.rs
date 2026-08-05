@@ -3,9 +3,10 @@ use lpac_core::ActivationCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    ffi::OsStr,
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 use zeroize::Zeroizing;
 
@@ -50,6 +51,31 @@ impl LpacRun {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PcscReader {
+    pub index: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DriverEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    payload: DriverPayload,
+}
+
+#[derive(Debug, Deserialize)]
+struct DriverPayload {
+    env: String,
+    data: Vec<DriverReader>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DriverReader {
+    env: String,
+    name: String,
+}
+
 pub fn parse_lpac_ndjson(output: &[u8]) -> Result<LpacRun> {
     let text = std::str::from_utf8(output).context("lpac output is not UTF-8")?;
     let mut progress = Vec::new();
@@ -87,6 +113,41 @@ pub fn parse_lpac_ndjson(output: &[u8]) -> Result<LpacRun> {
     Ok(LpacRun { progress, result })
 }
 
+pub fn parse_pcsc_readers(output: &[u8]) -> Result<Vec<PcscReader>> {
+    let event: DriverEvent = serde_json::from_slice(output).context("invalid lpac driver JSON")?;
+    if event.event_type != "driver" {
+        return Err(anyhow!(
+            "expected lpac driver event, received {}",
+            event.event_type
+        ));
+    }
+    if event.payload.env != "LPAC_APDU_PCSC_DRV_IFID" {
+        return Err(anyhow!(
+            "unexpected PC/SC selector environment variable: {}",
+            event.payload.env
+        ));
+    }
+
+    event
+        .payload
+        .data
+        .into_iter()
+        .map(|reader| {
+            let index = reader
+                .env
+                .parse::<u32>()
+                .with_context(|| format!("invalid PC/SC reader index: {}", reader.env))?;
+            if reader.name.trim().is_empty() {
+                return Err(anyhow!("PC/SC reader {index} has an empty name"));
+            }
+            Ok(PcscReader {
+                index,
+                name: reader.name,
+            })
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 pub struct LegacyLpacBackend {
     executable: PathBuf,
@@ -108,6 +169,12 @@ impl LegacyLpacBackend {
 
     pub fn executable(&self) -> &Path {
         &self.executable
+    }
+
+    pub fn readers(&self) -> Result<Vec<PcscReader>> {
+        let output = self.spawn(["driver", "apdu", "list"], None, false)?;
+        self.ensure_process_success(&output, "lpac driver apdu list")?;
+        parse_pcsc_readers(&output.stdout)
     }
 
     pub fn chip_info(&self) -> Result<LpacRun> {
@@ -188,30 +255,9 @@ impl LegacyLpacBackend {
     fn run<I, S>(&self, args: I, stdin: Option<&[u8]>) -> Result<LpacRun>
     where
         I: IntoIterator<Item = S>,
-        S: AsRef<std::ffi::OsStr>,
+        S: AsRef<OsStr>,
     {
-        let mut command = Command::new(&self.executable);
-        command
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        if stdin.is_some() {
-            command.stdin(Stdio::piped());
-        }
-        command.env("LPAC_APDU", "pcsc");
-        if let Some(index) = self.reader_index {
-            command.env("LPAC_APDU_PCSC_DRV_IFID", index.to_string());
-        }
-
-        let mut child = command
-            .spawn()
-            .with_context(|| format!("failed to start {}", self.executable.display()))?;
-        if let Some(input) = stdin {
-            let mut pipe = child.stdin.take().context("lpac stdin is unavailable")?;
-            pipe.write_all(input)?;
-        }
-
-        let output = child.wait_with_output()?;
+        let output = self.spawn(args, stdin, true)?;
         let run = parse_lpac_ndjson(&output.stdout).map_err(|error| {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.trim().is_empty() {
@@ -227,6 +273,50 @@ impl LegacyLpacBackend {
             ));
         }
         Ok(run)
+    }
+
+    fn spawn<I, S>(&self, args: I, stdin: Option<&[u8]>, select_reader: bool) -> Result<Output>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let mut command = Command::new(&self.executable);
+        command
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env("LPAC_APDU", "pcsc");
+        if stdin.is_some() {
+            command.stdin(Stdio::piped());
+        }
+        if select_reader && let Some(index) = self.reader_index {
+            command.env("LPAC_APDU_PCSC_DRV_IFID", index.to_string());
+        }
+
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("failed to start {}", self.executable.display()))?;
+        if let Some(input) = stdin {
+            let mut pipe = child.stdin.take().context("lpac stdin is unavailable")?;
+            pipe.write_all(input)?;
+        }
+        child.wait_with_output().context("failed to wait for lpac")
+    }
+
+    fn ensure_process_success(&self, output: &Output, command_name: &str) -> Result<()> {
+        if output.status.success() {
+            return Ok(());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(anyhow!(
+            "{command_name} failed with status {}{}",
+            output.status,
+            if stderr.trim().is_empty() {
+                String::new()
+            } else {
+                format!(": {}", stderr.trim())
+            }
+        ))
     }
 }
 
@@ -244,6 +334,31 @@ mod tests {
         assert_eq!(run.progress.len(), 1);
         assert_eq!(run.progress[0].message, "step");
         assert_eq!(run.result.data["eidValue"], "8901");
+    }
+
+    #[test]
+    fn parses_pcsc_reader_list() {
+        let output = br#"{"type":"driver","payload":{"env":"LPAC_APDU_PCSC_DRV_IFID","data":[{"env":"0","name":"Reader A"},{"env":"2","name":"Reader B"}]}}"#;
+
+        assert_eq!(
+            parse_pcsc_readers(output).unwrap(),
+            vec![
+                PcscReader {
+                    index: 0,
+                    name: "Reader A".into(),
+                },
+                PcscReader {
+                    index: 2,
+                    name: "Reader B".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_unexpected_driver_selector() {
+        let output = br#"{"type":"driver","payload":{"env":"OTHER","data":[]}}"#;
+        assert!(parse_pcsc_readers(output).is_err());
     }
 
     #[test]
