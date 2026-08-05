@@ -170,9 +170,11 @@ impl eframe::App for LpaApp {
                             .then(|| Zeroizing::new(self.confirmation_code.clone()));
                         self.activation_code.zeroize();
                         self.confirmation_code.zeroize();
-                        self.start_operation("Installing profile", move || {
-                            backend
-                                .download(&code, confirmation.as_ref().map(|value| value.as_str()))
+                        self.start_operation("Installing and verifying profile", move || {
+                            backend.download_and_verify(
+                                &code,
+                                confirmation.as_ref().map(|value| value.as_str()),
+                            )
                         });
                     }
                     Err(error) => self.output = format!("ERROR: {error}"),
