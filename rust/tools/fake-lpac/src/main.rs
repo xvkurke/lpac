@@ -24,18 +24,39 @@ fn emit(event_type: &str, code: i32, message: &str, data: Value) {
     );
 }
 
+fn emit_driver_readers() {
+    println!(
+        "{}",
+        json!({
+            "type": "driver",
+            "payload": {
+                "env": "LPAC_APDU_PCSC_DRV_IFID",
+                "data": [
+                    { "env": "0", "name": "NIK Test Reader" },
+                    { "env": "1", "name": "Backup Test Reader" }
+                ]
+            }
+        })
+    );
+}
+
 fn fail(message: &str, data: Value) -> ! {
     emit("lpa", -1, message, data);
     process::exit(1);
 }
 
 fn main() {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let command = args.iter().map(String::as_str).collect::<Vec<_>>();
+
+    if command.as_slice() == ["driver", "apdu", "list"] {
+        emit_driver_readers();
+        return;
+    }
+
     if env::var("LPAC_APDU_PCSC_DRV_IFID").as_deref() == Ok("999") {
         fail("pcsc_reader_unavailable", json!("fake reader failure"));
     }
-
-    let args = env::args().skip(1).collect::<Vec<_>>();
-    let command = args.iter().map(String::as_str).collect::<Vec<_>>();
 
     match command.as_slice() {
         ["chip", "info"] => emit(
