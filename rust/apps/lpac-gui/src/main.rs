@@ -56,7 +56,7 @@ fn configure_ui(context: &egui::Context) {
     visuals.widgets.active.fg_stroke.color = egui::Color32::WHITE;
     context.set_visuals(visuals);
 
-    let mut style = (*context.style()).clone();
+    let mut style = (*context.style_of(egui::Theme::Light)).clone();
     style.spacing.item_spacing = egui::vec2(10.0, 8.0);
     style.spacing.button_padding = egui::vec2(14.0, 8.0);
     style.spacing.interact_size.y = 34.0;
@@ -72,7 +72,7 @@ fn configure_ui(context: &egui::Context) {
     style
         .text_styles
         .insert(egui::TextStyle::Monospace, egui::FontId::monospace(14.0));
-    context.set_style(style);
+    context.set_style_of(egui::Theme::Light, style);
 }
 
 fn bundled_lpac_path() -> String {
