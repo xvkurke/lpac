@@ -32,8 +32,8 @@ fn downloads_through_stdin_and_verifies_profile_list() {
 
 #[test]
 fn propagates_structured_reader_failure() {
-    let backend = LegacyLpacBackend::new(env!("CARGO_BIN_EXE_fake-lpac"))
-        .with_reader_index(Some(999));
+    let backend =
+        LegacyLpacBackend::new(env!("CARGO_BIN_EXE_fake-lpac")).with_reader_index(Some(999));
     let error = backend.chip_info().unwrap_err().to_string();
 
     assert!(error.contains("pcsc_reader_unavailable"));
