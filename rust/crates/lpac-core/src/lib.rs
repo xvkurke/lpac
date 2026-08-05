@@ -25,23 +25,35 @@ pub struct ActivationCode {
 impl ActivationCode {
     pub fn parse(value: impl Into<String>) -> Result<Self, CoreError> {
         let raw = Zeroizing::new(value.into());
-        let body = raw.strip_prefix("LPA:").unwrap_or(&raw);
-        let parts: Vec<&str> = body.split('$').collect();
-        if parts.len() < 3 || parts[0] != "1" || parts[1].is_empty() || parts[2].is_empty() {
-            return Err(CoreError::InvalidActivationCode);
-        }
-        if !parts[2]
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '-')
-        {
-            return Err(CoreError::InvalidMatchingId);
-        }
+        let (smdp, matching_id, confirmation_required) = {
+            let body = raw.strip_prefix("LPA:").unwrap_or(raw.as_str());
+            let parts: Vec<&str> = body.split('$').collect();
+            if parts.len() < 3
+                || parts[0] != "1"
+                || parts[1].is_empty()
+                || parts[2].is_empty()
+            {
+                return Err(CoreError::InvalidActivationCode);
+            }
+            if !parts[2]
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '-')
+            {
+                return Err(CoreError::InvalidMatchingId);
+            }
+
+            (
+                parts[1].to_owned(),
+                parts[2].to_owned(),
+                parts.get(4).is_some_and(|value| *value == "1"),
+            )
+        };
 
         Ok(Self {
             raw,
-            smdp: parts[1].to_owned(),
-            matching_id: parts[2].to_owned(),
-            confirmation_required: parts.get(4).is_some_and(|value| *value == "1"),
+            smdp,
+            matching_id,
+            confirmation_required,
         })
     }
 
