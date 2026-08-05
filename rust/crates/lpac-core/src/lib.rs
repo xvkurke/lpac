@@ -248,10 +248,9 @@ mod tests {
 
     #[test]
     fn accepts_sysmocom_matching_id_and_trims_paste_whitespace() {
-        let code = ActivationCode::parse(
-            "\r\n1$smdpp.test.rsp.sysmocom.de$TS48v2_SAIP2.1_NoBERTLV\r\n",
-        )
-        .unwrap();
+        let code =
+            ActivationCode::parse("\r\n1$smdpp.test.rsp.sysmocom.de$TS48v2_SAIP2.1_NoBERTLV\r\n")
+                .unwrap();
 
         assert_eq!(code.smdp, "smdpp.test.rsp.sysmocom.de");
         assert_eq!(code.matching_id, "TS48v2_SAIP2.1_NoBERTLV");
