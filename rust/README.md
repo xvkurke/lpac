@@ -1,52 +1,100 @@
-# NIK LPA Rust migration
+# NIK LPA Rust desktop layer
 
-This directory contains the incremental Rust replacement for the desktop-facing parts of lpac.
+This directory contains the Rust desktop application and orchestration layer built around the existing `lpac`/`libeuicc` engine.
 
-## Current architecture
+The C implementation remains the single owner of the eUICC, PC/SC connection, APDU transport, and SGP.22 protocol state. The Rust side does not implement a second smart-card or RSP stack.
 
-- `lpac-core`: activation-code parsing, secret redaction, activation jobs, and authenticated encrypted transfer envelopes.
-- `lpac-backend`: adapter around the existing C lpac/libeuicc implementation.
-- `lpac-gui`: native egui/eframe desktop application for PC/SC reader testing.
+## Components
 
-The proven SGP.22 implementation remains in C during the first phase. Replacing it module-by-module is safer than rewriting authentication, ASN.1, ES8+, ES9+, and ES10x simultaneously.
+- `lpac-core`: strict activation-code parsing, redacted secret types, encrypted activation jobs, and `NIKLPA1` transfer envelopes.
+- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, and post-install verification.
+- `lpac-gui`: native egui/eframe application for PC/SC laboratory use.
+- `fake-lpac`: deterministic process-level test harness for backend and secret-boundary tests.
 
-## Encrypted transfer string
+## Supported desktop workflow
 
-The GUI creates a portable string with this format:
+The GUI currently provides:
 
-```text
-NIKLPA1:<base64url authenticated envelope>
-```
+- selection of the `lpac` executable and PC/SC reader index;
+- eUICC information lookup;
+- profile listing;
+- local profile installation from an activation string;
+- encrypted export of an activation job;
+- import and decryption of an activation job on another device;
+- one card operation at a time, executed outside the UI thread;
+- structured progress and final-result logging without activation secrets;
+- mandatory `profile list` verification after download.
 
-The payload is encrypted with XChaCha20-Poly1305. The transfer key must be delivered to the receiving device through a separate trusted channel. The envelope contains the exact activation string, optional confirmation code, reader hint, EID hint, job ID, and timestamp.
+An installation is reported as successful only when:
 
-The activation string is never included in application logs. UI output uses redacted identifiers.
-
-> This first implementation uses a shared 256-bit transfer key for the lab. Production device enrollment should replace it with recipient public-key encryption or a device-bound key stored in TPM/secure storage.
-
-## Build
-
-```bash
-cd rust
-cargo run -p lpac-gui
-```
-
-Place the current `lpac` executable next to the GUI or set its path in the application.
+1. `lpac profile download` returns a successful final event containing a non-empty ICCID; and
+2. a fresh `lpac profile list` contains the same ICCID.
 
 ## Secure stdin contract
 
-The Rust backend invokes:
+The Rust backend invokes the patched C CLI as:
 
 ```text
 lpac profile download -a -
 ```
 
-and writes the activation code to stdin. A small companion change in the C CLI is required so that `-a -` reads one line from stdin. Until that change lands, chip info and profile listing work, but profile installation through the GUI is intentionally blocked by the legacy CLI contract.
+or, when a confirmation code is present:
 
-## Migration stages
+```text
+lpac profile download -a - -c -
+```
 
-1. Rust GUI, job model, encryption envelope, and legacy backend.
-2. Secure stdin/FD activation input and structured progress events in C lpac.
-3. Native Rust PC/SC transport and profile management API.
-4. Port ES10x and ASN.1 boundaries behind compatibility tests.
-5. Port ES9+/HTTP state machine and remove the C runtime dependency only after hardware and interoperability tests pass.
+The activation and confirmation codes are written as separate lines to stdin. They do not appear in argv, process listings, or application logs. The C buffers and Rust temporary buffers are cleared after use.
+
+## Encrypted transfer string
+
+The laboratory transfer format is:
+
+```text
+NIKLPA1:<base64url authenticated envelope>
+```
+
+The payload is encrypted and authenticated with XChaCha20-Poly1305. It contains:
+
+- the exact activation string;
+- an optional confirmation code;
+- optional reader and EID hints;
+- a job UUID and creation timestamp.
+
+The sender copies the `NIKLPA1` string and delivers the 256-bit transfer key through a separate trusted channel. The receiver pastes both values into the GUI, decrypts the job, reviews only redacted metadata, selects its local reader, and installs the job.
+
+After a successful import, the entered key and ciphertext fields are cleared. The decrypted job zeroizes its activation and confirmation strings when dropped.
+
+> The shared transfer key is intended for the current laboratory test. Production enrollment should use recipient public-key encryption or a device-bound key held by TPM, secure element, or another protected keystore.
+
+## Build and test
+
+```bash
+cd rust
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo build --workspace --all-targets
+cargo test --workspace
+cargo run -p lpac-gui
+```
+
+Place the patched `lpac` executable next to the GUI or select its path in the application.
+
+## Integration coverage
+
+The `fake-lpac` harness verifies that:
+
+- activation and confirmation codes arrive through stdin;
+- neither secret is present in argv;
+- progress and final NDJSON events are parsed correctly;
+- structured PC/SC errors propagate to the GUI layer;
+- a successful download is followed by ICCID verification through `profile list`;
+- formatted logs do not contain the activation or confirmation code.
+
+## Roadmap
+
+1. Package the Rust GUI together with a pinned, patched `lpac` runtime for Windows and Linux.
+2. Add reader discovery by name, richer profile-management screens, cancellation, and explicit confirmation dialogs.
+3. Replace the laboratory shared-key envelope with recipient public-key encryption and device enrollment.
+4. Add replay fixtures for real sanitized `lpac` event streams and hardware smoke scripts.
+5. Keep the protocol/APDU implementation in `libeuicc` until an independently tested Rust replacement provides a concrete maintenance or safety benefit.
