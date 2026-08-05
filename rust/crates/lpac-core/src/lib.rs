@@ -24,16 +24,17 @@ pub struct ActivationCode {
 
 impl ActivationCode {
     pub fn parse(value: impl Into<String>) -> Result<Self, CoreError> {
-        let raw = Zeroizing::new(value.into());
+        let value = value.into();
+        let raw = Zeroizing::new(value.trim().to_owned());
         let (smdp, matching_id, confirmation_required) = {
             let body = raw.strip_prefix("LPA:").unwrap_or(raw.as_str());
             let parts: Vec<&str> = body.split('$').collect();
-            if parts.len() < 3 || parts[0] != "1" || parts[1].is_empty() || parts[2].is_empty() {
+            if parts.len() < 3 || parts[0] != "1" || parts[1].is_empty() {
                 return Err(CoreError::InvalidActivationCode);
             }
             if !parts[2]
                 .chars()
-                .all(|character| character.is_ascii_alphanumeric() || character == '-')
+                .all(|character| character.is_ascii_graphic() && character != '$')
             {
                 return Err(CoreError::InvalidMatchingId);
             }
@@ -243,6 +244,35 @@ mod tests {
         let decoded = decrypt_job(&envelope, &key).unwrap();
         assert_eq!(decoded.activation_code, code.expose());
         assert!(!envelope.contains("rsp.example"));
+    }
+
+    #[test]
+    fn accepts_sysmocom_matching_id_and_trims_paste_whitespace() {
+        let code = ActivationCode::parse(
+            "\r\n1$smdpp.test.rsp.sysmocom.de$TS48v2_SAIP2.1_NoBERTLV\r\n",
+        )
+        .unwrap();
+
+        assert_eq!(code.smdp, "smdpp.test.rsp.sysmocom.de");
+        assert_eq!(code.matching_id, "TS48v2_SAIP2.1_NoBERTLV");
+        assert_eq!(
+            code.expose(),
+            "1$smdpp.test.rsp.sysmocom.de$TS48v2_SAIP2.1_NoBERTLV"
+        );
+    }
+
+    #[test]
+    fn accepts_empty_matching_id_allowed_by_sgp22() {
+        let code = ActivationCode::parse("1$rsp.example$$1.2.3.4").unwrap();
+        assert!(code.matching_id.is_empty());
+    }
+
+    #[test]
+    fn rejects_whitespace_inside_matching_id() {
+        assert!(matches!(
+            ActivationCode::parse("1$rsp.example$MATCH ID"),
+            Err(CoreError::InvalidMatchingId)
+        ));
     }
 
     #[test]
