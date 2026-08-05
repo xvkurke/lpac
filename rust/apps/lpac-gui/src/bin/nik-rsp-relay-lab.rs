@@ -298,13 +298,12 @@ impl RelayLabApp {
                                 self.selected_index = index;
                             }
                             if visible {
-                                let result = if record.validation_error.is_none()
-                                    && record.aead_verified
-                                {
-                                    "AEAD ✓  chain ✓"
-                                } else {
-                                    "перевірка ✕"
-                                };
+                                let result =
+                                    if record.validation_error.is_none() && record.aead_verified {
+                                        "AEAD ✓  chain ✓"
+                                    } else {
+                                        "перевірка ✕"
+                                    };
                                 ui.small(result);
                             } else {
                                 ui.small("очікує передачі");
@@ -392,14 +391,17 @@ impl RelayLabApp {
                     ui.end_row();
                 });
 
-            ui.collapsing("Показати зашифровану NIKRSP1 строку", |ui| {
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.records[index].ciphertext)
-                        .desired_rows(7)
-                        .desired_width(f32::INFINITY)
-                        .font(egui::TextStyle::Monospace),
-                );
-            });
+            ui.collapsing(
+                "Показати зашифровану NIKRSP1 строку",
+                |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.records[index].ciphertext)
+                            .desired_rows(7)
+                            .desired_width(f32::INFINITY)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                },
+            );
         });
     }
 }
