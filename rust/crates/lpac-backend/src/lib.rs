@@ -3,6 +3,7 @@ use lpac_core::ActivationCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    env,
     ffi::OsStr,
     io::Write,
     path::{Path, PathBuf},
@@ -280,12 +281,16 @@ impl LegacyLpacBackend {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
+        self.validate_bundled_runtime()?;
+
         let mut command = Command::new(&self.executable);
         command
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("LPAC_APDU", "pcsc");
+        self.configure_runtime_environment(&mut command)?;
+
         if stdin.is_some() {
             command.stdin(Stdio::piped());
         }
@@ -301,6 +306,72 @@ impl LegacyLpacBackend {
             pipe.write_all(input)?;
         }
         child.wait_with_output().context("failed to wait for lpac")
+    }
+
+    fn runtime_root(&self) -> Option<&Path> {
+        self.executable
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+    }
+
+    fn configure_runtime_environment(&self, command: &mut Command) -> Result<()> {
+        let Some(root) = self.runtime_root() else {
+            return Ok(());
+        };
+        command.current_dir(root);
+
+        #[cfg(windows)]
+        {
+            let inherited = env::var_os("PATH").unwrap_or_default();
+            let mut paths = vec![root.to_path_buf(), root.join("lib")];
+            paths.extend(env::split_paths(&inherited));
+            let joined = env::join_paths(paths).context("failed to construct lpac PATH")?;
+            command.env("PATH", joined);
+        }
+
+        #[cfg(not(windows))]
+        {
+            let inherited = env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
+            let mut paths = vec![root.join("lib")];
+            paths.extend(env::split_paths(&inherited));
+            let joined = env::join_paths(paths).context("failed to construct lpac library path")?;
+            command.env("LD_LIBRARY_PATH", joined);
+        }
+
+        Ok(())
+    }
+
+    fn validate_bundled_runtime(&self) -> Result<()> {
+        #[cfg(windows)]
+        {
+            let Some(root) = self.runtime_root() else {
+                return Ok(());
+            };
+            if !root.join("nik-lpa-gui.exe").is_file() {
+                return Ok(());
+            }
+
+            let required = [
+                "lpac.exe",
+                "libgcc_s_seh-1.dll",
+                "libwinpthread-1.dll",
+                "driver/driver_apdu_pcsc.dll",
+                "driver/driver_http_winhttp.dll",
+            ];
+            let missing = required
+                .iter()
+                .filter(|relative| !root.join(relative).is_file())
+                .copied()
+                .collect::<Vec<_>>();
+            if !missing.is_empty() {
+                return Err(anyhow!(
+                    "Windows bundle is incomplete. Missing: {}. Download the newest complete artifact and extract all files together.",
+                    missing.join(", ")
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     fn ensure_process_success(&self, output: &Output, command_name: &str) -> Result<()> {
