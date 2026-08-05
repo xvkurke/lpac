@@ -115,6 +115,8 @@ jobs:
           Push-Location desktop-bundle
           try {
             $env:PATH = "$PWD;$PWD\lib;$env:PATH"
+            $env:LPAC_APDU = "stdio"
+            $env:LPAC_HTTP = "stdio"
             & .\lpac.exe version
             if ($LASTEXITCODE -ne 0) { throw "lpac version failed" }
             & .\lpac.exe driver list
@@ -172,8 +174,8 @@ jobs:
         run: |
           set -euo pipefail
           cd desktop-bundle
-          ./lpac version
-          ./lpac driver list
+          LPAC_APDU=stdio LPAC_HTTP=stdio ./lpac version
+          LPAC_APDU=stdio LPAC_HTTP=stdio ./lpac driver list
 
       - name: Upload desktop bundle
         uses: actions/upload-artifact@v4
