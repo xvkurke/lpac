@@ -58,10 +58,9 @@ fn main() {
             }]),
         ),
         ["profile", "download", "-a", "-", "-c", "-"] => {
-            if args
-                .iter()
-                .any(|argument| argument.contains("rsp.test") || argument.contains(CONFIRMATION_CODE))
-            {
+            if args.iter().any(|argument| {
+                argument.contains("rsp.test") || argument.contains(CONFIRMATION_CODE)
+            }) {
                 fail("secret_present_in_argv", Value::Null);
             }
 
