@@ -60,28 +60,27 @@ fn configure_ui(context: &egui::Context) {
     style.spacing.item_spacing = egui::vec2(10.0, 8.0);
     style.spacing.button_padding = egui::vec2(14.0, 8.0);
     style.spacing.interact_size.y = 34.0;
-    style.text_styles.insert(
-        egui::TextStyle::Heading,
-        egui::FontId::proportional(22.0),
-    );
+    style
+        .text_styles
+        .insert(egui::TextStyle::Heading, egui::FontId::proportional(22.0));
     style
         .text_styles
         .insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
     style
         .text_styles
         .insert(egui::TextStyle::Button, egui::FontId::proportional(15.0));
-    style.text_styles.insert(
-        egui::TextStyle::Monospace,
-        egui::FontId::monospace(14.0),
-    );
+    style
+        .text_styles
+        .insert(egui::TextStyle::Monospace, egui::FontId::monospace(14.0));
     context.set_style(style);
 }
 
 fn bundled_lpac_path() -> String {
     let executable_name = if cfg!(windows) { "lpac.exe" } else { "lpac" };
-    let adjacent = env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(|directory| directory.join(executable_name)));
+    let adjacent = env::current_exe().ok().and_then(|path| {
+        path.parent()
+            .map(|directory| directory.join(executable_name))
+    });
 
     adjacent
         .filter(|path| path.is_file())
@@ -339,18 +338,14 @@ impl eframe::App for LpaApp {
                             .clicked()
                         {
                             let backend = self.backend();
-                            self.start_run("Читання інформації eUICC", move || {
-                                backend.chip_info()
-                            });
+                            self.start_run("Читання інформації eUICC", move || backend.chip_info());
                         }
                         if ui
                             .add_enabled(!busy, egui::Button::new("Показати профілі"))
                             .clicked()
                         {
                             let backend = self.backend();
-                            self.start_run("Читання списку профілів", move || {
-                                backend.profiles()
-                            });
+                            self.start_run("Читання списку профілів", move || backend.profiles());
                         }
                     });
                 });
@@ -392,9 +387,7 @@ impl eframe::App for LpaApp {
                                         move || {
                                             backend.download_and_verify(
                                                 &code,
-                                                confirmation
-                                                    .as_ref()
-                                                    .map(|value| value.as_str()),
+                                                confirmation.as_ref().map(|value| value.as_str()),
                                             )
                                         },
                                     );
@@ -404,10 +397,7 @@ impl eframe::App for LpaApp {
                         }
 
                         if ui
-                            .add_enabled(
-                                !busy,
-                                egui::Button::new("Створити зашифровану строку"),
-                            )
+                            .add_enabled(!busy, egui::Button::new("Створити зашифровану строку"))
                             .clicked()
                         {
                             match ActivationCode::parse(self.activation_code.clone()) {
@@ -421,9 +411,7 @@ impl eframe::App for LpaApp {
                                     );
                                     match encrypt_job(&job, &self.transfer_key) {
                                         Ok(value) => self.transfer_envelope = value,
-                                        Err(error) => {
-                                            self.output = format!("ПОМИЛКА: {error}")
-                                        }
+                                        Err(error) => self.output = format!("ПОМИЛКА: {error}"),
                                     }
                                 }
                                 Err(error) => self.output = format!("ПОМИЛКА: {error}"),
@@ -445,9 +433,12 @@ impl eframe::App for LpaApp {
                                 .desired_width(f32::INFINITY)
                                 .font(egui::TextStyle::Monospace),
                         );
-                        ui.collapsing("Показати лабораторний transfer key", |ui| {
-                            ui.monospace(encode_transfer_key(&self.transfer_key));
-                        });
+                        ui.collapsing(
+                            "Показати лабораторний transfer key",
+                            |ui| {
+                                ui.monospace(encode_transfer_key(&self.transfer_key));
+                            },
+                        );
                     });
                 }
 
@@ -503,10 +494,13 @@ impl eframe::App for LpaApp {
                         && let Some(job) = self.imported_job.take()
                     {
                         let backend = self.backend();
-                        self.start_run("Встановлення імпортованого завдання", move || {
-                            let code = ActivationCode::parse(job.activation_code.clone())?;
-                            backend.download_and_verify(&code, job.confirmation_code.as_deref())
-                        });
+                        self.start_run(
+                            "Встановлення імпортованого завдання",
+                            move || {
+                                let code = ActivationCode::parse(job.activation_code.clone())?;
+                                backend.download_and_verify(&code, job.confirmation_code.as_deref())
+                            },
+                        );
                     }
                 });
 
