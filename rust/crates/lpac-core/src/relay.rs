@@ -83,10 +83,9 @@ impl RelayStage {
 
     pub fn direction(self) -> RelayDirection {
         match self {
-            Self::InitRequest
-            | Self::EuiccAuth
-            | Self::EuiccPrepared
-            | Self::InstallResult => RelayDirection::OfflineToOnline,
+            Self::InitRequest | Self::EuiccAuth | Self::EuiccPrepared | Self::InstallResult => {
+                RelayDirection::OfflineToOnline
+            }
             Self::ServerAuth | Self::DownloadPrepare | Self::BoundProfilePackage => {
                 RelayDirection::OnlineToOffline
             }
@@ -273,10 +272,7 @@ impl RelayPacket {
     }
 }
 
-pub fn encrypt_relay_packet(
-    packet: &RelayPacket,
-    key: &[u8; 32],
-) -> Result<String, CoreError> {
+pub fn encrypt_relay_packet(packet: &RelayPacket, key: &[u8; 32]) -> Result<String, CoreError> {
     envelope::encrypt(packet, key, RELAY_PREFIX)
 }
 
@@ -353,8 +349,7 @@ pub fn demo_relay_session(delay_seconds: i64) -> Result<Vec<RelayPacket>, CoreEr
             direction: stage.direction(),
             target_eid_hash: target_eid_hash.clone(),
             transaction_id: (stage != RelayStage::InitRequest).then(|| transaction_id.clone()),
-            created_at: started_at
-                + TimeDelta::seconds(delay_seconds.saturating_mul(index as i64)),
+            created_at: started_at + TimeDelta::seconds(delay_seconds.saturating_mul(index as i64)),
             expires_at,
             previous_message_hash,
             payload: payloads[index].clone(),
