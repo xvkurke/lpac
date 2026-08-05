@@ -55,41 +55,49 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up native Windows UCRT64 toolchain
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
       - name: Install Linux GUI system dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev unzip
+
       - name: Build release GUI
         working-directory: rust
         run: cargo build --release -p lpac-gui
 
-      - name: Download matching Windows lpac runtime
+      - name: Build native Windows lpac runtime
         if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
+        shell: msys2 {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          $runId = $null
-          for ($attempt = 0; $attempt -lt 60 -and -not $runId; $attempt++) {
-            $response = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs?head_sha=$env:TARGET_HEAD_SHA&per_page=100" | ConvertFrom-Json
-            $run = $response.workflow_runs | Where-Object { $_.name -eq "Build" } | Select-Object -First 1
-            if ($run) {
-              $runId = $run.id
-              break
-            }
-            Start-Sleep -Seconds 5
-          }
-          if (-not $runId) {
-            throw "No Build workflow run found for $env:TARGET_HEAD_SHA"
-          }
-          gh run watch $runId --exit-status
-          gh run download $runId --pattern "lpac-*-windows-x64" --dir c-artifact
-          $archive = Get-ChildItem c-artifact -Recurse -Filter "lpac-windows-x86_64-mingw.zip" | Select-Object -First 1
-          if (-not $archive) {
-            throw "Windows lpac runtime archive was not found"
-          }
-          New-Item -ItemType Directory -Force desktop-bundle | Out-Null
-          Expand-Archive -Path $archive.FullName -DestinationPath desktop-bundle -Force
+          set -euo pipefail
+          cmake -S . -B build-lpac-windows -G Ninja \
+            -DSTANDALONE_MODE=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF \
+            -DLPAC_WITH_HTTP_CURL=OFF
+          cmake --build build-lpac-windows
+          rm -rf native-stage desktop-bundle
+          cmake --install build-lpac-windows --prefix "$PWD/native-stage"
+          test -d native-stage/executables
+          mkdir -p desktop-bundle
+          cp -a native-stage/executables/. desktop-bundle/
+
+          for runtime in libgcc_s_seh-1.dll libwinpthread-1.dll; do
+            path="$(gcc -print-file-name="$runtime")"
+            if [ -f "$path" ]; then
+              cp -f "$path" desktop-bundle/
+            fi
+          done
 
       - name: Assemble Windows desktop bundle
         if: runner.os == 'Windows'
@@ -97,7 +105,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force desktop-bundle/driver | Out-Null
-          Copy-Item desktop-bundle/driver_*.dll desktop-bundle/driver/ -Force
+          Get-ChildItem desktop-bundle -Filter "driver_*.dll" | Copy-Item -Destination desktop-bundle/driver -Force
           Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-gui.exe
           Copy-Item rust/README.md desktop-bundle/NIK-LPA-README.md
           @'
