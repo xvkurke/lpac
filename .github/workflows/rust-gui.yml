@@ -1,63 +1,33 @@
-name: Rust GUI
+name: Rust GUI Windows
 
 on:
   push:
     paths:
       - "rust/**"
-      - "src/applet/profile/download.c"
+      - "src/**"
+      - "utils/**"
       - ".github/workflows/rust-gui.yml"
   pull_request:
     paths:
       - "rust/**"
-      - "src/applet/profile/download.c"
+      - "src/**"
+      - "utils/**"
       - ".github/workflows/rust-gui.yml"
 
 permissions:
-  actions: read
   contents: read
 
-env:
-  TARGET_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rust
+  windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Install GUI system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Build workspace
-        run: cargo build --workspace --all-targets
-      - name: Run tests
-        run: cargo test --workspace
-
-  package:
-    needs: check
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-latest
-            artifact: nik-lpa-desktop-linux-x86_64
-          - runner: windows-latest
-            artifact: nik-lpa-desktop-windows-x86_64
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
 
       - name: Set up native Windows UCRT64 toolchain
-        if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
@@ -67,16 +37,27 @@ jobs:
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
 
-      - name: Install Linux GUI system dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libwayland-dev libxkbcommon-dev unzip
+      - name: Check Rust formatting
+        working-directory: rust
+        run: cargo fmt --all -- --check
+
+      - name: Run Rust Clippy
+        working-directory: rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build Rust workspace
+        working-directory: rust
+        run: cargo build --workspace --all-targets
+
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo test --workspace
 
       - name: Build release GUI
         working-directory: rust
         run: cargo build --release -p lpac-gui
 
       - name: Build native Windows lpac runtime
-        if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
           set -euo pipefail
@@ -92,15 +73,13 @@ jobs:
           mkdir -p desktop-bundle
           cp -a native-stage/executables/. desktop-bundle/
 
-          for runtime in libgcc_s_seh-1.dll libwinpthread-1.dll; do
-            path="$(gcc -print-file-name="$runtime")"
-            if [ -f "$path" ]; then
-              cp -f "$path" desktop-bundle/
-            fi
-          done
+          cp -f /ucrt64/bin/libgcc_s_seh-1.dll desktop-bundle/
+          cp -f /ucrt64/bin/libwinpthread-1.dll desktop-bundle/
+
+          test -f desktop-bundle/libgcc_s_seh-1.dll
+          test -f desktop-bundle/libwinpthread-1.dll
 
       - name: Assemble Windows desktop bundle
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -111,18 +90,19 @@ jobs:
           @'
           @echo off
           cd /d "%~dp0"
-          set "PATH=%CD%;%CD%\lib;%PATH%"
+          set "PATH=%CD%;%CD%\lib;%SystemRoot%\System32;%SystemRoot%"
           ".\nik-lpa-gui.exe"
           '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
 
-      - name: Smoke-test Windows desktop bundle
-        if: runner.os == 'Windows'
+      - name: Smoke-test isolated Windows desktop bundle
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $required = @(
             "desktop-bundle/lpac.exe",
             "desktop-bundle/nik-lpa-gui.exe",
+            "desktop-bundle/libgcc_s_seh-1.dll",
+            "desktop-bundle/libwinpthread-1.dll",
             "desktop-bundle/driver/driver_apdu_pcsc.dll",
             "desktop-bundle/driver/driver_apdu_stdio.dll",
             "desktop-bundle/driver/driver_http_stdio.dll",
@@ -130,87 +110,27 @@ jobs:
             "desktop-bundle/run-nik-lpa.cmd"
           )
           foreach ($path in $required) {
-            if (-not (Test-Path $path)) { throw "Missing bundle file: $path" }
+            if (-not (Test-Path $path)) {
+              throw "Missing bundle file: $path"
+            }
           }
+
           Push-Location desktop-bundle
           try {
-            $env:PATH = "$PWD;$PWD\lib;$env:PATH"
+            $env:PATH = "$PWD;$env:SystemRoot\System32;$env:SystemRoot"
             $env:LPAC_APDU = "stdio"
             $env:LPAC_HTTP = "stdio"
             & .\lpac.exe version
-            if ($LASTEXITCODE -ne 0) { throw "lpac version failed" }
+            if ($LASTEXITCODE -ne 0) {
+              throw "Bundled lpac.exe failed in an isolated runtime environment"
+            }
           } finally {
             Pop-Location
           }
 
-      - name: Download matching Linux lpac runtime
-        if: runner.os == 'Linux'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          run_id=""
-          for attempt in $(seq 1 60); do
-            run_id="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_HEAD_SHA&per_page=100" --jq '.workflow_runs[] | select(.name == "Build") | .id' | head -n1)"
-            if [ -n "$run_id" ]; then
-              break
-            fi
-            sleep 5
-          done
-          if [ -z "$run_id" ]; then
-            echo "No Build workflow run found for $TARGET_HEAD_SHA" >&2
-            exit 1
-          fi
-          gh run watch "$run_id" --exit-status
-          gh run download "$run_id" --pattern 'lpac-*-linux-x64' --dir c-artifact
-          archive="$(find c-artifact -type f -name 'lpac-linux-x86_64.zip' -print -quit)"
-          if [ -z "$archive" ]; then
-            echo "Linux lpac runtime archive was not found" >&2
-            exit 1
-          fi
-          mkdir -p desktop-bundle
-          unzip -q "$archive" -d desktop-bundle
-
-      - name: Assemble Linux desktop bundle
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp rust/target/release/lpac-gui desktop-bundle/nik-lpa-gui
-          cp rust/README.md desktop-bundle/NIK-LPA-README.md
-          cat > desktop-bundle/run-nik-lpa.sh <<'EOF'
-          #!/bin/sh
-          cd "$(dirname "$0")"
-          export LD_LIBRARY_PATH="$PWD/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          exec ./nik-lpa-gui "$@"
-          EOF
-          chmod +x desktop-bundle/nik-lpa-gui desktop-bundle/lpac desktop-bundle/run-nik-lpa.sh
-
-      - name: Smoke-test Linux desktop bundle
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          required=(
-            desktop-bundle/lpac
-            desktop-bundle/nik-lpa-gui
-            desktop-bundle/driver/driver_apdu_pcsc.so
-            desktop-bundle/driver/driver_apdu_stdio.so
-            desktop-bundle/driver/driver_http_curl.so
-            desktop-bundle/driver/driver_http_stdio.so
-            desktop-bundle/run-nik-lpa.sh
-          )
-          for path in "${required[@]}"; do
-            test -f "$path" || { echo "Missing bundle file: $path" >&2; exit 1; }
-          done
-          cd desktop-bundle
-          export LD_LIBRARY_PATH="$PWD/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          LPAC_APDU=stdio LPAC_HTTP=stdio ./lpac version
-
-      - name: Upload desktop bundle
+      - name: Upload Windows desktop bundle
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: nik-lpa-desktop-windows-x86_64
           if-no-files-found: error
           path: desktop-bundle
