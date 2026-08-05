@@ -1,19 +1,19 @@
 # NIK LPA Rust desktop layer
 
-This directory contains the Rust desktop application and orchestration layer built around the existing `lpac`/`libeuicc` engine.
+This directory contains the Windows desktop application and orchestration layer built around the existing `lpac`/`libeuicc` engine.
 
 The C implementation remains the single owner of the eUICC, PC/SC connection, APDU transport, and SGP.22 protocol state. The Rust side does not implement a second smart-card or RSP stack.
 
 ## Components
 
 - `lpac-core`: strict activation-code parsing, redacted secret types, encrypted activation jobs, and `NIKLPA1` transfer envelopes.
-- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, reader discovery, and post-install verification.
-- `lpac-gui`: native egui/eframe application for PC/SC laboratory use.
+- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, reader discovery, runtime validation, and post-install verification.
+- `lpac-gui`: native egui/eframe Windows application for PC/SC laboratory use.
 - `fake-lpac`: deterministic process-level test harness for backend and secret-boundary tests.
 
-## Supported desktop workflow
+## Supported workflow
 
-The GUI currently provides:
+The GUI provides:
 
 - explicit PC/SC reader discovery through `lpac driver apdu list`;
 - manual reader-index fallback;
@@ -70,7 +70,7 @@ After a successful import, the entered key and ciphertext fields are cleared. Th
 
 ## Build and test
 
-```bash
+```powershell
 cd rust
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
@@ -79,32 +79,36 @@ cargo test --workspace
 cargo run -p lpac-gui
 ```
 
-For a local development build, place the patched `lpac` executable next to the GUI, keep its driver/runtime layout intact, or select its path in the application.
+For a local development build, place the patched `lpac.exe` next to the GUI and keep its driver/runtime layout intact, or select its absolute path in the application.
 
-## Desktop bundles
+## Windows desktop bundle
 
-CI publishes:
+CI publishes one artifact:
 
-- `nik-lpa-desktop-windows-x86_64`
-- `nik-lpa-desktop-linux-x86_64`
+```text
+nik-lpa-desktop-windows-x86_64
+```
 
-Each bundle contains:
+The bundle contains:
 
-- the Rust GUI;
-- the patched `lpac` executable from the same head SHA;
-- PC/SC and HTTP driver libraries;
-- the C runtime libraries and license files;
-- a platform launcher that starts the GUI from the bundle directory.
+- `nik-lpa-gui.exe`;
+- the patched `lpac.exe` built natively with UCRT64;
+- PC/SC, stdio, and WinHTTP driver DLLs;
+- `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`;
+- the lpac/libeuicc runtime DLLs;
+- `run-nik-lpa.cmd`.
 
-Use `run-nik-lpa.cmd` on Windows or `run-nik-lpa.sh` on Linux.
+Extract the complete ZIP into one directory. Do not copy only the EXE files. Run either `run-nik-lpa.cmd` or `nik-lpa-gui.exe`; the GUI resolves the adjacent `lpac.exe` automatically and starts it from the bundle directory.
 
-System requirements remain external:
+The backend validates the bundled runtime before starting `lpac.exe`. An incomplete extraction is reported in the GUI operation log instead of triggering a Windows missing-DLL dialog.
+
+System requirements:
 
 - Windows Smart Card service must be running;
-- Linux requires `pcscd` and the normal desktop/OpenGL runtime dependencies;
-- a compatible PC/SC reader and removable eUICC must be connected for hardware operations.
+- a compatible PC/SC reader must be installed;
+- a removable eUICC must be connected for hardware operations.
 
-The packaging workflow smoke-tests the bundled `lpac` runtime with `lpac version` and `lpac driver list` before upload. Hardware access is not exercised in hosted CI.
+The workflow tests the bundle with an isolated `PATH`, so it cannot accidentally use MSYS2 DLLs installed on the GitHub runner.
 
 ## Integration coverage
 
