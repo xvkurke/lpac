@@ -28,11 +28,7 @@ impl ActivationCode {
         let (smdp, matching_id, confirmation_required) = {
             let body = raw.strip_prefix("LPA:").unwrap_or(raw.as_str());
             let parts: Vec<&str> = body.split('$').collect();
-            if parts.len() < 3
-                || parts[0] != "1"
-                || parts[1].is_empty()
-                || parts[2].is_empty()
-            {
+            if parts.len() < 3 || parts[0] != "1" || parts[1].is_empty() || parts[2].is_empty() {
                 return Err(CoreError::InvalidActivationCode);
             }
             if !parts[2]
