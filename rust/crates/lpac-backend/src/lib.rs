@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use lpac_core::ActivationCode;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{
     io::Write,
     path::{Path, PathBuf},
@@ -139,6 +139,50 @@ impl LegacyLpacBackend {
         }
 
         self.run(args, Some(stdin.as_bytes()))
+    }
+
+    /// A successful ES10b load is not accepted as final proof on its own.
+    /// The installed ICCID must be returned by a fresh `profile list` call.
+    pub fn download_and_verify(
+        &self,
+        code: &ActivationCode,
+        confirmation_code: Option<&str>,
+    ) -> Result<LpacRun> {
+        let mut download = self.download(code, confirmation_code)?;
+        let iccid = download
+            .result
+            .data
+            .get("iccid")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .context("lpac download result did not contain a non-empty ICCID")?
+            .to_owned();
+
+        let profiles = self.profiles()?;
+        let profile_list = profiles
+            .result
+            .data
+            .as_array()
+            .context("lpac profile list result was not an array")?;
+        let installed = profile_list.iter().any(|profile| {
+            profile
+                .get("iccid")
+                .and_then(Value::as_str)
+                .is_some_and(|value| value == iccid)
+        });
+        if !installed {
+            return Err(anyhow!(
+                "download reported ICCID {iccid}, but a fresh profile list did not contain it"
+            ));
+        }
+
+        download.progress.extend(profiles.progress);
+        download.progress.push(LpacPayload {
+            code: 0,
+            message: "post_install_profile_list_verified".into(),
+            data: json!({ "iccid": iccid }),
+        });
+        Ok(download)
     }
 
     fn run<I, S>(&self, args: I, stdin: Option<&[u8]>) -> Result<LpacRun>
