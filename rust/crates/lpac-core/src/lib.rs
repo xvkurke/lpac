@@ -1,16 +1,15 @@
 use std::fmt;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chacha20poly1305::{
-    XChaCha20Poly1305, XNonce,
-    aead::{Aead, KeyInit, Payload},
-};
 use chrono::{DateTime, Utc};
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
+
+mod envelope;
+pub mod relay;
 
 pub const ENVELOPE_PREFIX: &str = "NIKLPA1:";
 
@@ -127,13 +126,6 @@ impl fmt::Debug for ActivationJob {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Envelope {
-    version: u8,
-    nonce: String,
-    ciphertext: String,
-}
-
 pub fn generate_transfer_key() -> [u8; 32] {
     let mut key = [0_u8; 32];
     OsRng.fill_bytes(&mut key);
@@ -152,67 +144,11 @@ pub fn decode_transfer_key(value: &str) -> Result<[u8; 32], CoreError> {
 }
 
 pub fn encrypt_job(job: &ActivationJob, key: &[u8; 32]) -> Result<String, CoreError> {
-    let cipher = XChaCha20Poly1305::new(key.into());
-    let mut nonce = [0_u8; 24];
-    OsRng.fill_bytes(&mut nonce);
-
-    let mut plaintext = serde_json::to_vec(job)?;
-    let encryption_result = cipher.encrypt(
-        XNonce::from_slice(&nonce),
-        Payload {
-            msg: plaintext.as_ref(),
-            aad: ENVELOPE_PREFIX.as_bytes(),
-        },
-    );
-    plaintext.zeroize();
-    let ciphertext = encryption_result.map_err(|_| CoreError::Crypto)?;
-
-    let envelope = Envelope {
-        version: 1,
-        nonce: URL_SAFE_NO_PAD.encode(nonce),
-        ciphertext: URL_SAFE_NO_PAD.encode(ciphertext),
-    };
-    Ok(format!(
-        "{}{}",
-        ENVELOPE_PREFIX,
-        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope)?)
-    ))
+    envelope::encrypt(job, key, ENVELOPE_PREFIX)
 }
 
 pub fn decrypt_job(value: &str, key: &[u8; 32]) -> Result<ActivationJob, CoreError> {
-    let encoded = value
-        .strip_prefix(ENVELOPE_PREFIX)
-        .ok_or(CoreError::InvalidEnvelope)?;
-    let envelope: Envelope = serde_json::from_slice(
-        &URL_SAFE_NO_PAD
-            .decode(encoded)
-            .map_err(|_| CoreError::InvalidEnvelope)?,
-    )?;
-    if envelope.version != 1 {
-        return Err(CoreError::InvalidEnvelope);
-    }
-
-    let nonce: [u8; 24] = URL_SAFE_NO_PAD
-        .decode(envelope.nonce)
-        .map_err(|_| CoreError::InvalidEnvelope)?
-        .try_into()
-        .map_err(|_| CoreError::InvalidEnvelope)?;
-    let ciphertext = URL_SAFE_NO_PAD
-        .decode(envelope.ciphertext)
-        .map_err(|_| CoreError::InvalidEnvelope)?;
-    let cipher = XChaCha20Poly1305::new(key.into());
-    let mut plaintext = cipher
-        .decrypt(
-            XNonce::from_slice(&nonce),
-            Payload {
-                msg: ciphertext.as_ref(),
-                aad: ENVELOPE_PREFIX.as_bytes(),
-            },
-        )
-        .map_err(|_| CoreError::Crypto)?;
-    let result = serde_json::from_slice(&plaintext);
-    plaintext.zeroize();
-    Ok(result?)
+    envelope::decrypt(value, key, ENVELOPE_PREFIX)
 }
 
 #[derive(Debug, Error)]
@@ -227,6 +163,12 @@ pub enum CoreError {
     InvalidKey,
     #[error("encryption or authentication failed")]
     Crypto,
+    #[error("invalid relay packet: {0}")]
+    InvalidRelayPacket(String),
+    #[error("relay packet {stage} arrived after its deadline")]
+    RelayExpired { stage: &'static str },
+    #[error("relay hash chain mismatch at sequence {sequence}")]
+    RelayHashMismatch { sequence: u32 },
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 }
@@ -287,15 +229,12 @@ mod tests {
 
     #[test]
     fn rejects_invalid_nonce_length_without_panicking() {
-        let envelope = Envelope {
-            version: 1,
-            nonce: URL_SAFE_NO_PAD.encode([0_u8; 8]),
-            ciphertext: URL_SAFE_NO_PAD.encode([0_u8; 16]),
-        };
         let encoded = format!(
             "{}{}",
             ENVELOPE_PREFIX,
-            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap())
+            URL_SAFE_NO_PAD.encode(
+                br#"{"version":1,"nonce":"AAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}"#
+            )
         );
 
         assert!(matches!(
