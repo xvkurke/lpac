@@ -301,9 +301,7 @@ impl eframe::App for LpaApp {
                         if busy {
                             ui.horizontal(|ui| {
                                 ui.spinner();
-                                ui.strong(
-                                    "Виконується операція. Інші дії тимчасово заблоковані.",
-                                );
+                                ui.strong("Виконується операція. Інші дії тимчасово заблоковані.");
                             });
                             ui.add_space(6.0);
                         }
@@ -342,10 +340,7 @@ impl eframe::App for LpaApp {
                                         });
                                 }
                                 if ui
-                                    .add_enabled(
-                                        !busy,
-                                        egui::Button::new("Оновити список рідерів"),
-                                    )
+                                    .add_enabled(!busy, egui::Button::new("Оновити список рідерів"))
                                     .clicked()
                                 {
                                     self.start_reader_discovery();
@@ -361,18 +356,20 @@ impl eframe::App for LpaApp {
                                     .clicked()
                                 {
                                     let backend = self.backend();
-                                    self.start_run("Читання інформації eUICC", move || {
-                                        backend.chip_info()
-                                    });
+                                    self.start_run(
+                                        "Читання інформації eUICC",
+                                        move || backend.chip_info(),
+                                    );
                                 }
                                 if ui
                                     .add_enabled(!busy, egui::Button::new("Показати профілі"))
                                     .clicked()
                                 {
                                     let backend = self.backend();
-                                    self.start_run("Читання списку профілів", move || {
-                                        backend.profiles()
-                                    });
+                                    self.start_run(
+                                        "Читання списку профілів",
+                                        move || backend.profiles(),
+                                    );
                                 }
                             });
                         });
@@ -426,9 +423,7 @@ impl eframe::App for LpaApp {
                                                 },
                                             );
                                         }
-                                        Err(error) => {
-                                            self.output = format!("ПОМИЛКА: {error}")
-                                        }
+                                        Err(error) => self.output = format!("ПОМИЛКА: {error}"),
                                     }
                                 }
 
@@ -455,9 +450,7 @@ impl eframe::App for LpaApp {
                                                 }
                                             }
                                         }
-                                        Err(error) => {
-                                            self.output = format!("ПОМИЛКА: {error}")
-                                        }
+                                        Err(error) => self.output = format!("ПОМИЛКА: {error}"),
                                     }
                                 }
                             });
@@ -505,10 +498,7 @@ impl eframe::App for LpaApp {
                                     .password(true),
                             );
                             if ui
-                                .add_enabled(
-                                    !busy,
-                                    egui::Button::new("Розшифрувати завдання"),
-                                )
+                                .add_enabled(!busy, egui::Button::new("Розшифрувати завдання"))
                                 .clicked()
                             {
                                 self.import_transfer_job();
@@ -558,9 +548,7 @@ impl eframe::App for LpaApp {
                         ui.group(|ui| {
                             ui.set_min_width(ui.available_width());
                             ui.heading("Журнал операцій");
-                            ui.label(
-                                "Activation і confirmation коди не записуються в журнал.",
-                            );
+                            ui.label("Activation і confirmation коди не записуються в журнал.");
                             ui.add(
                                 egui::TextEdit::multiline(&mut self.output)
                                     .desired_rows(12)
