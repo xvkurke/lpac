@@ -53,9 +53,9 @@ jobs:
         working-directory: rust
         run: cargo test --workspace
 
-      - name: Build release GUI
+      - name: Build release GUIs
         working-directory: rust
-        run: cargo build --release -p lpac-gui
+        run: cargo build --release -p lpac-gui --bins
 
       - name: Build native Windows lpac runtime
         shell: msys2 {0}
@@ -86,6 +86,7 @@ jobs:
           New-Item -ItemType Directory -Force desktop-bundle/driver | Out-Null
           Get-ChildItem desktop-bundle -Filter "driver_*.dll" | Copy-Item -Destination desktop-bundle/driver -Force
           Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-gui.exe
+          Copy-Item rust/target/release/nik-rsp-relay-lab.exe desktop-bundle/nik-rsp-relay-lab.exe
           Copy-Item rust/README.md desktop-bundle/NIK-LPA-README.md
           @'
           @echo off
@@ -93,6 +94,11 @@ jobs:
           set "PATH=%CD%;%CD%\lib;%SystemRoot%\System32;%SystemRoot%"
           ".\nik-lpa-gui.exe"
           '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
+          @'
+          @echo off
+          cd /d "%~dp0"
+          ".\nik-rsp-relay-lab.exe"
+          '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-rsp-relay-lab.cmd
 
       - name: Smoke-test isolated Windows desktop bundle
         shell: pwsh
@@ -101,13 +107,15 @@ jobs:
           $required = @(
             "desktop-bundle/lpac.exe",
             "desktop-bundle/nik-lpa-gui.exe",
+            "desktop-bundle/nik-rsp-relay-lab.exe",
             "desktop-bundle/libgcc_s_seh-1.dll",
             "desktop-bundle/libwinpthread-1.dll",
             "desktop-bundle/driver/driver_apdu_pcsc.dll",
             "desktop-bundle/driver/driver_apdu_stdio.dll",
             "desktop-bundle/driver/driver_http_stdio.dll",
             "desktop-bundle/driver/driver_http_winhttp.dll",
-            "desktop-bundle/run-nik-lpa.cmd"
+            "desktop-bundle/run-nik-lpa.cmd",
+            "desktop-bundle/run-nik-rsp-relay-lab.cmd"
           )
           foreach ($path in $required) {
             if (-not (Test-Path $path)) {
