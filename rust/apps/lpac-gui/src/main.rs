@@ -123,10 +123,7 @@ impl eframe::App for LpaApp {
             ui.add_enabled(!busy, egui::TextEdit::singleline(&mut self.lpac_path));
             ui.end_row();
             ui.label("PC/SC reader index");
-            ui.add_enabled(
-                !busy,
-                egui::TextEdit::singleline(&mut self.reader_index),
-            );
+            ui.add_enabled(!busy, egui::TextEdit::singleline(&mut self.reader_index));
             ui.end_row();
         });
 
@@ -174,10 +171,8 @@ impl eframe::App for LpaApp {
                         self.activation_code.zeroize();
                         self.confirmation_code.zeroize();
                         self.start_operation("Installing profile", move || {
-                            backend.download(
-                                &code,
-                                confirmation.as_ref().map(|value| value.as_str()),
-                            )
+                            backend
+                                .download(&code, confirmation.as_ref().map(|value| value.as_str()))
                         });
                     }
                     Err(error) => self.output = format!("ERROR: {error}"),
@@ -185,10 +180,7 @@ impl eframe::App for LpaApp {
             }
 
             if ui
-                .add_enabled(
-                    !busy,
-                    egui::Button::new("Create encrypted transfer string"),
-                )
+                .add_enabled(!busy, egui::Button::new("Create encrypted transfer string"))
                 .clicked()
             {
                 match ActivationCode::parse(self.activation_code.clone()) {
