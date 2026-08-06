@@ -85,20 +85,28 @@ impl RelayAgentProcess {
             .env("LPAC_HTTP", "winhttp");
         configure_runtime_environment(&executable, &mut command)?;
 
-        if role == RelayAgentRole::Card && let Some(index) = reader_index {
+        if role == RelayAgentRole::Card
+            && let Some(index) = reader_index
+        {
             command.env("LPAC_APDU_PCSC_DRV_IFID", index.to_string());
         }
 
         let mut child = command
             .spawn()
             .with_context(|| format!("failed to start {} relay agent", role.argument()))?;
-        let stdin = child.stdin.take().context("relay agent stdin is unavailable")?;
+        let stdin = child
+            .stdin
+            .take()
+            .context("relay agent stdin is unavailable")?;
         let stdout = child
             .stdout
             .take()
             .map(BufReader::new)
             .context("relay agent stdout is unavailable")?;
-        let stderr = child.stderr.take().context("relay agent stderr is unavailable")?;
+        let stderr = child
+            .stderr
+            .take()
+            .context("relay agent stderr is unavailable")?;
         let stderr_history = Arc::new(Mutex::new(VecDeque::new()));
         let stderr_sink = Arc::clone(&stderr_history);
         thread::spawn(move || {
@@ -127,7 +135,11 @@ impl RelayAgentProcess {
     }
 
     pub fn request(&mut self, operation: &str, payload: Value) -> Result<Value> {
-        if let Some(status) = self.child.try_wait().context("failed to inspect relay agent")? {
+        if let Some(status) = self
+            .child
+            .try_wait()
+            .context("failed to inspect relay agent")?
+        {
             return Err(anyhow!(
                 "{} relay agent exited with {status}: {}",
                 self.role.argument(),
@@ -141,11 +153,14 @@ impl RelayAgentProcess {
             operation,
             payload: &payload,
         };
-        serde_json::to_writer(&mut self.stdin, &request).context("failed to encode relay request")?;
+        serde_json::to_writer(&mut self.stdin, &request)
+            .context("failed to encode relay request")?;
         self.stdin
             .write_all(b"\n")
             .context("failed to delimit relay request")?;
-        self.stdin.flush().context("failed to flush relay request")?;
+        self.stdin
+            .flush()
+            .context("failed to flush relay request")?;
 
         let mut response_line = String::new();
         let bytes = self
@@ -192,7 +207,10 @@ impl RelayAgentProcess {
     pub fn shutdown(mut self) -> Result<()> {
         let _ = self.request("shutdown", json!({}));
         drop(self.stdin);
-        let status = self.child.wait().context("failed to wait for relay agent")?;
+        let status = self
+            .child
+            .wait()
+            .context("failed to wait for relay agent")?;
         if !status.success() {
             return Err(anyhow!(
                 "{} relay agent exited with {status}: {}",

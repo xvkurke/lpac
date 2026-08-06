@@ -36,7 +36,10 @@ impl PeerIdentity {
     }
 
     pub fn pairing_code(&self) -> String {
-        format!("{PAIRING_PREFIX}{}", URL_SAFE_NO_PAD.encode(self.public_key))
+        format!(
+            "{PAIRING_PREFIX}{}",
+            URL_SAFE_NO_PAD.encode(self.public_key)
+        )
     }
 
     pub fn public_key_bytes(&self) -> [u8; 32] {
@@ -75,10 +78,19 @@ impl DeviceIdentity {
         self.peer_identity().pairing_code()
     }
 
-    pub fn encrypt<T: Serialize>(&self, recipient: &PeerIdentity, value: &T) -> Result<String, CoreError> {
+    pub fn encrypt<T: Serialize>(
+        &self,
+        recipient: &PeerIdentity,
+        value: &T,
+    ) -> Result<String, CoreError> {
         let sender_public = self.peer_identity().public_key;
         let recipient_public = recipient.public_key;
-        let key = derive_key(&self.private_key, &recipient_public, &sender_public, &recipient_public)?;
+        let key = derive_key(
+            &self.private_key,
+            &recipient_public,
+            &sender_public,
+            &recipient_public,
+        )?;
         let cipher = XChaCha20Poly1305::new((&key).into());
         let mut nonce = [0_u8; 24];
         OsRng.fill_bytes(&mut nonce);
@@ -134,7 +146,12 @@ impl DeviceIdentity {
         let ciphertext = URL_SAFE_NO_PAD
             .decode(envelope.ciphertext)
             .map_err(|_| CoreError::InvalidEnvelope)?;
-        let key = derive_key(&self.private_key, &sender_public, &sender_public, &recipient_public)?;
+        let key = derive_key(
+            &self.private_key,
+            &sender_public,
+            &sender_public,
+            &recipient_public,
+        )?;
         let cipher = XChaCha20Poly1305::new((&key).into());
         let aad = associated_data(&sender_public, &recipient_public);
         let mut plaintext = cipher
@@ -181,7 +198,8 @@ fn derive_key(
     salt[32..].copy_from_slice(recipient_public);
     let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared.as_bytes());
     let mut key = [0_u8; 32];
-    hkdf.expand(KEY_INFO, &mut key).map_err(|_| CoreError::Crypto)?;
+    hkdf.expand(KEY_INFO, &mut key)
+        .map_err(|_| CoreError::Crypto)?;
     Ok(key)
 }
 

@@ -89,7 +89,9 @@ impl SessionSide {
             (Self::Server, None) => Some(RelayStage::InitRequest),
             (Self::Server, Some(RelayStage::ServerAuth)) => Some(RelayStage::EuiccAuth),
             (Self::Server, Some(RelayStage::DownloadPrepare)) => Some(RelayStage::EuiccPrepared),
-            (Self::Server, Some(RelayStage::BoundProfilePackage)) => Some(RelayStage::InstallResult),
+            (Self::Server, Some(RelayStage::BoundProfilePackage)) => {
+                Some(RelayStage::InstallResult)
+            }
             _ => None,
         }
     }
@@ -191,7 +193,11 @@ impl RelaySession {
             .expected_incoming(self.last_packet().map(|packet| packet.stage))
     }
 
-    pub fn accept_incoming(&mut self, packet: RelayPacket, encoded_size: usize) -> Result<(), CoreError> {
+    pub fn accept_incoming(
+        &mut self,
+        packet: RelayPacket,
+        encoded_size: usize,
+    ) -> Result<(), CoreError> {
         let expected = self.expected_incoming().ok_or_else(|| {
             CoreError::InvalidRelayPacket("this side is not waiting for another packet".into())
         })?;

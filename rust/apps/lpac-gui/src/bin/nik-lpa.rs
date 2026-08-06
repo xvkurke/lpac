@@ -3,12 +3,7 @@ mod controller;
 #[path = "nik_lpa/model.rs"]
 mod model;
 
-use std::{
-    collections::VecDeque,
-    env,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{collections::VecDeque, env, path::PathBuf, time::Duration};
 
 use chrono::Utc;
 use controller::{WorkerCommand, WorkerController, WorkerEvent};
@@ -187,8 +182,11 @@ impl NikLpaApp {
         if self.log.len() >= 300 {
             self.log.pop_front();
         }
-        self.log
-            .push_back(format!("{}  {}", Utc::now().format("%H:%M:%S"), message.into()));
+        self.log.push_back(format!(
+            "{}  {}",
+            Utc::now().format("%H:%M:%S"),
+            message.into()
+        ));
     }
 
     fn send(&mut self, command: WorkerCommand, label: &str) {
@@ -237,7 +235,9 @@ impl NikLpaApp {
             WorkerEvent::Readers(result) => match result {
                 Ok(readers) => {
                     if let Some(first) = readers.first()
-                        && !readers.iter().any(|reader| reader.index == self.selected_reader)
+                        && !readers
+                            .iter()
+                            .any(|reader| reader.index == self.selected_reader)
                     {
                         self.selected_reader = first.index;
                     }
@@ -290,8 +290,12 @@ impl NikLpaApp {
                     self.relay_running = true;
                     self.relay_role = Some(role);
                     self.add_log(match role {
-                        RelayAgentRole::Card => "Card Agent запущено; PC/SC-сеанс утримується відкритим",
-                        RelayAgentRole::Server => "Server Agent запущено; WinHTTP готовий до SM-DP+",
+                        RelayAgentRole::Card => {
+                            "Card Agent запущено; PC/SC-сеанс утримується відкритим"
+                        }
+                        RelayAgentRole::Server => {
+                            "Server Agent запущено; WinHTTP готовий до SM-DP+"
+                        }
                     });
                     if role == RelayAgentRole::Card {
                         self.relay_request("card.init", json!({}), PendingRelayAction::CardInit);
@@ -343,11 +347,18 @@ impl NikLpaApp {
         }
     }
 
-    fn apply_relay_response(&mut self, action: PendingRelayAction, payload: Value) -> Result<(), String> {
+    fn apply_relay_response(
+        &mut self,
+        action: PendingRelayAction,
+        payload: Value,
+    ) -> Result<(), String> {
         let peer = self.peer.ok_or_else(|| "Peer не спарений".to_owned())?;
         match action {
             PendingRelayAction::CardInit => {
-                let eid = self.card_eid.as_deref().ok_or_else(|| "EID не прочитаний".to_owned())?;
+                let eid = self
+                    .card_eid
+                    .as_deref()
+                    .ok_or_else(|| "EID не прочитаний".to_owned())?;
                 let mut session = RelaySession::new_card(eid_hash(eid), payload)
                     .map_err(|error| error.to_string())?;
                 let packet = session
@@ -381,7 +392,8 @@ impl NikLpaApp {
                 });
                 self.create_and_encrypt_outgoing(RelayStage::InstallResult, None, install_payload)?;
                 if let Some(session) = self.session.as_mut() {
-                    session.status = "Профіль записано; виконується незалежна перевірка Profile List".into();
+                    session.status =
+                        "Профіль записано; виконується незалежна перевірка Profile List".into();
                 }
                 self.verify_after_relay_stop = Some(expected_iccid);
                 self.send(WorkerCommand::StopRelay, "Закривається PC/SC relay-сеанс");
@@ -395,9 +407,9 @@ impl NikLpaApp {
                 let code = ActivationCode::parse(self.activation_code.clone())
                     .map_err(|error| error.to_string())?;
                 let mut outgoing_payload = payload;
-                let object = outgoing_payload
-                    .as_object_mut()
-                    .ok_or_else(|| "Некоректна відповідь server.initiateAuthentication".to_owned())?;
+                let object = outgoing_payload.as_object_mut().ok_or_else(|| {
+                    "Некоректна відповідь server.initiateAuthentication".to_owned()
+                })?;
                 object.insert("matchingId".into(), Value::String(code.matching_id));
                 object.insert("serverAddress".into(), Value::String(code.smdp));
                 self.create_and_encrypt_outgoing(
@@ -511,9 +523,7 @@ impl NikLpaApp {
             .unwrap_or(0);
 
         if self.mode == AppMode::ServerAgent && self.session.is_none() {
-            let incoming_text = self
-                .pending_server_incoming_text()
-                .unwrap_or_default();
+            let incoming_text = self.pending_server_incoming_text().unwrap_or_default();
             let packet: RelayPacket = match self.identity.decrypt(&peer, incoming_text.trim()) {
                 Ok(packet) => packet,
                 Err(error) => {
@@ -575,11 +585,7 @@ impl NikLpaApp {
         self.session
             .as_ref()
             .map(|session| session.incoming_text.as_str())
-            .or_else(|| {
-                self.log
-                    .front()
-                    .and(None)
-            })
+            .or_else(|| self.log.front().and(None))
     }
 
     fn process_server_init_request(&mut self) {
@@ -677,7 +683,10 @@ impl NikLpaApp {
                 }
                 self.add_log("Relay download завершено: отримано INSTALL_RESULT");
             }
-            _ => self.add_log(format!("Неочікувана стадія для поточного режиму: {}", stage.code())),
+            _ => self.add_log(format!(
+                "Неочікувана стадія для поточного режиму: {}",
+                stage.code()
+            )),
         }
     }
 
@@ -685,18 +694,14 @@ impl NikLpaApp {
         let Some(expected) = self.verify_after_relay_stop.take() else {
             return;
         };
-        let found = run
-            .result
-            .data
-            .as_array()
-            .is_some_and(|profiles| {
-                profiles.iter().any(|profile| {
-                    profile
-                        .get("iccid")
-                        .and_then(Value::as_str)
-                        .is_some_and(|iccid| iccid == expected)
-                })
-            });
+        let found = run.result.data.as_array().is_some_and(|profiles| {
+            profiles.iter().any(|profile| {
+                profile
+                    .get("iccid")
+                    .and_then(Value::as_str)
+                    .is_some_and(|iccid| iccid == expected)
+            })
+        });
         if let Some(session) = self.session.as_mut() {
             if found {
                 session.status = format!("ICCID {expected} підтверджено свіжим Profile List");
@@ -705,7 +710,9 @@ impl NikLpaApp {
             } else {
                 session.status = format!("ПОМИЛКА: ICCID {expected} відсутній у Profile List");
                 session.completed = false;
-                self.add_log(format!("ПОМИЛКА: ICCID {expected} не знайдено після встановлення"));
+                self.add_log(format!(
+                    "ПОМИЛКА: ICCID {expected} не знайдено після встановлення"
+                ));
             }
         }
     }
@@ -801,7 +808,11 @@ impl NikLpaApp {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(if self.dark_mode { "Світла" } else { "Темна" })
+                    .button(if self.dark_mode {
+                        "Світла"
+                    } else {
+                        "Темна"
+                    })
                     .clicked()
                 {
                     self.dark_mode = !self.dark_mode;
@@ -822,7 +833,11 @@ impl NikLpaApp {
             metric_card(
                 &mut columns[1],
                 "Pairing",
-                if self.peer.is_some() { "Підключено" } else { "Не налаштовано" },
+                if self.peer.is_some() {
+                    "Підключено"
+                } else {
+                    "Не налаштовано"
+                },
             );
             metric_card(
                 &mut columns[2],
@@ -838,7 +853,9 @@ impl NikLpaApp {
             ui.heading("Швидкий старт");
             match self.mode {
                 AppMode::CardAgent => {
-                    ui.label("1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.");
+                    ui.label(
+                        "1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.",
+                    );
                     if ui
                         .add_enabled(!self.busy, egui::Button::new("Перейти до ручної передачі"))
                         .clicked()
@@ -873,7 +890,10 @@ impl NikLpaApp {
             ui.horizontal(|ui| {
                 ui.heading("Профілі eUICC");
                 if ui
-                    .add_enabled(!self.busy && !self.relay_running, egui::Button::new("Оновити"))
+                    .add_enabled(
+                        !self.busy && !self.relay_running,
+                        egui::Button::new("Оновити"),
+                    )
                     .clicked()
                 {
                     self.send(
@@ -1067,7 +1087,10 @@ impl NikLpaApp {
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace),
                 );
-                if ui.add_enabled(!self.busy, egui::Button::new("Прийняти INIT_REQUEST")).clicked() {
+                if ui
+                    .add_enabled(!self.busy, egui::Button::new("Прийняти INIT_REQUEST"))
+                    .clicked()
+                {
                     let text = std::mem::take(bootstrap);
                     let peer = match self.peer {
                         Some(peer) => peer,
@@ -1089,7 +1112,9 @@ impl NikLpaApp {
                                     self.session = Some(session);
                                     self.process_server_init_request();
                                 }
-                                Err(error) => self.add_log(format!("ПОМИЛКА INIT_REQUEST: {error}")),
+                                Err(error) => {
+                                    self.add_log(format!("ПОМИЛКА INIT_REQUEST: {error}"))
+                                }
                             }
                         }
                         Ok(packet) => self.add_log(format!(
@@ -1127,7 +1152,10 @@ impl NikLpaApp {
             );
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(!session.outgoing_text.is_empty(), egui::Button::new("Копіювати строку"))
+                    .add_enabled(
+                        !session.outgoing_text.is_empty(),
+                        egui::Button::new("Копіювати строку"),
+                    )
                     .clicked()
                 {
                     ui.ctx().copy_text(session.outgoing_text.clone());
@@ -1199,7 +1227,10 @@ impl NikLpaApp {
                 ui.separator();
                 ui.label(format!("Job ID: {}", session.job_id));
                 ui.label(format!("Статус: {}", session.status));
-                ui.label(format!("Локальний deadline: {} UTC", session.deadline.format("%Y-%m-%d %H:%M:%S")));
+                ui.label(format!(
+                    "Локальний deadline: {} UTC",
+                    session.deadline.format("%Y-%m-%d %H:%M:%S")
+                ));
                 ui.small("SM-DP+ може завершити свою транзакцію раніше за локальний anti-replay deadline.");
             }
         });
@@ -1213,7 +1244,10 @@ impl NikLpaApp {
                 ui.label(format!("Сторона: {:?}", session.side));
                 ui.label(format!("Пакетів у ланцюжку: {}", session.packets.len()));
                 ui.label(format!("Статус: {}", session.status));
-                ui.label(format!("Завершено: {}", if session.completed { "так" } else { "ні" }));
+                ui.label(format!(
+                    "Завершено: {}",
+                    if session.completed { "так" } else { "ні" }
+                ));
             } else {
                 ui.label("Активної сесії немає.");
             }
@@ -1243,10 +1277,7 @@ impl NikLpaApp {
         card(ui, |ui| {
             ui.heading("Runtime");
             ui.label("Шлях до lpac");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.lpac_path)
-                    .desired_width(f32::INFINITY),
-            );
+            ui.add(egui::TextEdit::singleline(&mut self.lpac_path).desired_width(f32::INFINITY));
             ui.checkbox(&mut self.dark_mode, "Темна тема");
             if ui.button("Застосувати тему").clicked() {
                 configure_theme(ui.ctx(), self.dark_mode);
@@ -1257,7 +1288,9 @@ impl NikLpaApp {
             ui.heading("Безпека");
             ui.label("Пакети: NIKRSP2 / X25519 / HKDF-SHA256 / XChaCha20-Poly1305.");
             ui.label("Activation code не записується в журнал і передається Card Agent лише як matchingId усередині ciphertext.");
-            ui.label("Постійне DPAPI-сховище identity та сесій буде ввімкнено перед release-кандидатом.");
+            ui.label(
+                "Постійне DPAPI-сховище identity та сесій буде ввімкнено перед release-кандидатом.",
+            );
         });
     }
 
@@ -1288,7 +1321,10 @@ impl NikLpaApp {
                         });
                 }
                 if ui
-                    .add_enabled(!self.busy && !self.relay_running, egui::Button::new("Оновити рідери"))
+                    .add_enabled(
+                        !self.busy && !self.relay_running,
+                        egui::Button::new("Оновити рідери"),
+                    )
                     .clicked()
                 {
                     self.send(
@@ -1299,7 +1335,10 @@ impl NikLpaApp {
                     );
                 }
                 if ui
-                    .add_enabled(!self.busy && !self.relay_running, egui::Button::new("Інформація eUICC"))
+                    .add_enabled(
+                        !self.busy && !self.relay_running,
+                        egui::Button::new("Інформація eUICC"),
+                    )
                     .clicked()
                 {
                     self.send(
