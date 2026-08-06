@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use eframe::egui;
-use lpac_core::relay::{RelayPacket, RelayStage};
+use lpac_core::relay::RelayStage;
 
 use crate::{
     app::NikLpaApp,
@@ -140,11 +140,7 @@ impl NikLpaApp {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 toggle_theme = ui
-                    .button(if self.dark_mode {
-                        "Світла"
-                    } else {
-                        "Темна"
-                    })
+                    .button(if self.dark_mode { "Світла" } else { "Темна" })
                     .clicked();
                 if self.busy {
                     ui.spinner();
@@ -520,6 +516,8 @@ impl NikLpaApp {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let mode = self.mode;
+
         card(ui, |ui| {
             ui.heading("Послідовність RSP");
             egui::Grid::new("rsp_timeline")
@@ -540,7 +538,7 @@ impl NikLpaApp {
                         });
                         ui.label(stage.code());
                         ui.monospace(stage.direction().arrow());
-                        ui.label(match self.mode {
+                        ui.label(match mode {
                             AppMode::CardAgent => stage.offline_action_uk(),
                             AppMode::ServerAgent => stage.online_action_uk(),
                             _ => stage.label_uk(),
@@ -548,7 +546,31 @@ impl NikLpaApp {
                         ui.end_row();
                     }
                 });
+
             if let Some(session) = self.session.as_ref() {
+                if !session.timeline.is_empty() {
+                    ui.separator();
+                    ui.strong("Audit подій");
+                    egui::Grid::new("rsp_audit_timeline")
+                        .num_columns(4)
+                        .spacing([12.0, 6.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Час UTC");
+                            ui.strong("Стадія");
+                            ui.strong("Розмір");
+                            ui.strong("Результат");
+                            ui.end_row();
+                            for event in &session.timeline {
+                                ui.monospace(event.timestamp.format("%H:%M:%S").to_string());
+                                ui.monospace(event.stage.code());
+                                ui.label(format!("{} байт", event.packet_size));
+                                ui.label(&event.note);
+                                ui.end_row();
+                            }
+                        });
+                }
+
                 ui.separator();
                 ui.label(format!("Job ID: {}", session.job_id));
                 ui.label(format!("Статус: {}", session.status));
