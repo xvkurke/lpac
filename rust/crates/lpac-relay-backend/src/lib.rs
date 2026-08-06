@@ -328,11 +328,7 @@ fn validate_bundled_runtime(executable: &Path, role: RelayAgentRole) -> Result<(
             return Ok(());
         }
 
-        let mut required = vec![
-            "lpac.exe",
-            "libgcc_s_seh-1.dll",
-            "libwinpthread-1.dll",
-        ];
+        let mut required = vec!["lpac.exe", "libgcc_s_seh-1.dll", "libwinpthread-1.dll"];
         required.extend(role.required_driver_files());
         let missing = required
             .iter()
