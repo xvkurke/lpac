@@ -18,12 +18,7 @@ pub fn metric_card(ui: &mut egui::Ui, title: &str, value: &str) {
     });
 }
 
-pub fn role_card(
-    ui: &mut egui::Ui,
-    title: &str,
-    description: &str,
-    button_label: &str,
-) -> bool {
+pub fn role_card(ui: &mut egui::Ui, title: &str, description: &str, button_label: &str) -> bool {
     let mut clicked = false;
     card(ui, |ui| {
         ui.heading(title);

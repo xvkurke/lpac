@@ -140,7 +140,11 @@ impl NikLpaApp {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 toggle_theme = ui
-                    .button(if self.dark_mode { "Світла" } else { "Темна" })
+                    .button(if self.dark_mode {
+                        "Світла"
+                    } else {
+                        "Темна"
+                    })
                     .clicked();
                 if self.busy {
                     ui.spinner();
@@ -603,9 +607,7 @@ impl NikLpaApp {
         card(ui, |ui| {
             ui.heading("Runtime");
             ui.label("Шлях до lpac");
-            ui.add(
-                egui::TextEdit::singleline(&mut self.lpac_path).desired_width(f32::INFINITY),
-            );
+            ui.add(egui::TextEdit::singleline(&mut self.lpac_path).desired_width(f32::INFINITY));
             ui.checkbox(&mut self.dark_mode, "Темна тема");
             apply_theme = ui.button("Застосувати тему").clicked();
         });

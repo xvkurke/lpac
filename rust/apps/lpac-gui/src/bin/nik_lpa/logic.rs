@@ -163,9 +163,7 @@ impl NikLpaApp {
                     RelayAgentRole::Card => {
                         "Card Agent запущено; PC/SC-сеанс утримується відкритим"
                     }
-                    RelayAgentRole::Server => {
-                        "Server Agent запущено; WinHTTP готовий до SM-DP+"
-                    }
+                    RelayAgentRole::Server => "Server Agent запущено; WinHTTP готовий до SM-DP+",
                 });
                 if role == RelayAgentRole::Card {
                     self.relay_request("card.init", json!({}), PendingRelayAction::CardInit);
@@ -313,11 +311,7 @@ impl NikLpaApp {
                 )?;
             }
             PendingRelayAction::ServerGetBpp => {
-                self.create_and_encrypt_outgoing(
-                    RelayStage::BoundProfilePackage,
-                    None,
-                    payload,
-                )?;
+                self.create_and_encrypt_outgoing(RelayStage::BoundProfilePackage, None, payload)?;
             }
         }
         Ok(())
