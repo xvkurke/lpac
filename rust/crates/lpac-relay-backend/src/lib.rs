@@ -27,6 +27,26 @@ impl RelayAgentRole {
             Self::Server => "server-agent",
         }
     }
+
+    fn driver_names(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Card => ("pcsc", "stdio"),
+            Self::Server => ("stdio", "winhttp"),
+        }
+    }
+
+    fn required_driver_files(self) -> [&'static str; 2] {
+        match self {
+            Self::Card => [
+                "driver/driver_apdu_pcsc.dll",
+                "driver/driver_http_stdio.dll",
+            ],
+            Self::Server => [
+                "driver/driver_apdu_stdio.dll",
+                "driver/driver_http_winhttp.dll",
+            ],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -73,7 +93,8 @@ impl RelayAgentProcess {
         reader_index: Option<u32>,
     ) -> Result<Self> {
         let executable = executable.into();
-        validate_bundled_runtime(&executable)?;
+        validate_bundled_runtime(&executable, role)?;
+        let (apdu_driver, http_driver) = role.driver_names();
 
         let mut command = Command::new(&executable);
         command
@@ -81,8 +102,8 @@ impl RelayAgentProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env("LPAC_APDU", "pcsc")
-            .env("LPAC_HTTP", "winhttp");
+            .env("LPAC_APDU", apdu_driver)
+            .env("LPAC_HTTP", http_driver);
         configure_runtime_environment(&executable, &mut command)?;
 
         if role == RelayAgentRole::Card
@@ -205,7 +226,8 @@ impl RelayAgentProcess {
     }
 
     pub fn shutdown(mut self) -> Result<()> {
-        let _ = self.request("shutdown", json!({}));
+        self.request("shutdown", json!({}))
+            .context("relay agent rejected graceful shutdown")?;
         let status = self
             .child
             .wait()
@@ -223,8 +245,10 @@ impl RelayAgentProcess {
 
 impl Drop for RelayAgentProcess {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if self.child.try_wait().ok().flatten().is_none() {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 }
 
@@ -271,8 +295,10 @@ fn configure_runtime_environment(executable: &Path, command: &mut Command) -> Re
         let inherited = env::var_os("PATH").unwrap_or_default();
         let mut paths = vec![root.to_path_buf(), root.join("lib")];
         paths.extend(env::split_paths(&inherited));
-        let joined = env::join_paths(paths).context("failed to construct lpac PATH")?;
-        command.env("PATH", joined);
+        command.env(
+            "PATH",
+            env::join_paths(paths).context("failed to construct lpac PATH")?,
+        );
     }
 
     #[cfg(not(windows))]
@@ -280,33 +306,34 @@ fn configure_runtime_environment(executable: &Path, command: &mut Command) -> Re
         let inherited = env::var_os("LD_LIBRARY_PATH").unwrap_or_default();
         let mut paths = vec![root.join("lib")];
         paths.extend(env::split_paths(&inherited));
-        let joined = env::join_paths(paths).context("failed to construct lpac library path")?;
-        command.env("LD_LIBRARY_PATH", joined);
+        command.env(
+            "LD_LIBRARY_PATH",
+            env::join_paths(paths).context("failed to construct lpac library path")?,
+        );
     }
 
     Ok(())
 }
 
-fn validate_bundled_runtime(executable: &Path) -> Result<()> {
+fn validate_bundled_runtime(executable: &Path, role: RelayAgentRole) -> Result<()> {
     #[cfg(windows)]
     {
         let Some(root) = runtime_root(executable) else {
             return Ok(());
         };
-        let looks_like_bundle = root.join("nik-lpa-gui.exe").is_file()
+        let looks_like_bundle = root.join("nik-lpa-legacy-gui.exe").is_file()
             || root.join("nik-lpa.exe").is_file()
             || root.join("nik-rsp-relay-lab.exe").is_file();
         if !looks_like_bundle {
             return Ok(());
         }
 
-        let required = [
+        let mut required = vec![
             "lpac.exe",
             "libgcc_s_seh-1.dll",
             "libwinpthread-1.dll",
-            "driver/driver_apdu_pcsc.dll",
-            "driver/driver_http_winhttp.dll",
         ];
+        required.extend(role.required_driver_files());
         let missing = required
             .iter()
             .filter(|relative| !root.join(relative).is_file())
@@ -314,7 +341,8 @@ fn validate_bundled_runtime(executable: &Path) -> Result<()> {
             .collect::<Vec<_>>();
         if !missing.is_empty() {
             return Err(anyhow!(
-                "Windows bundle is incomplete. Missing: {}",
+                "Windows bundle is incomplete for {}: {}",
+                role.argument(),
                 missing.join(", ")
             ));
         }
@@ -326,6 +354,16 @@ fn validate_bundled_runtime(executable: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn card_role_has_no_network_http_backend() {
+        assert_eq!(RelayAgentRole::Card.driver_names(), ("pcsc", "stdio"));
+    }
+
+    #[test]
+    fn server_role_has_no_pcsc_backend() {
+        assert_eq!(RelayAgentRole::Server.driver_names(), ("stdio", "winhttp"));
+    }
 
     #[test]
     fn formats_structured_server_error() {
