@@ -6,6 +6,7 @@ on:
       - agent/rust-gui-encrypted-transfer
     paths:
       - ".github/workflows/repair-production-ui-once.yml"
+      - "rust/crates/lpac-relay-backend/src/lib.rs"
 
 permissions:
   contents: write
@@ -25,8 +26,10 @@ jobs:
           components: rustfmt
 
       - name: Replace global bootstrap state with window-owned state
-        shell: python
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 <<'PY'
           from pathlib import Path
 
           path = Path("rust/apps/lpac-gui/src/bin/nik-lpa.rs")
@@ -156,6 +159,7 @@ jobs:
           '''
           source = source[:block_start] + replacement + source[block_end:]
           path.write_text(source, encoding="utf-8")
+          PY
 
       - name: Format Rust workspace
         working-directory: rust
@@ -165,6 +169,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if git diff --quiet; then
+            echo "UI already repaired"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add rust/apps/lpac-gui/src/bin/nik-lpa.rs
