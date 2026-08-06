@@ -52,7 +52,7 @@ pub enum WorkerEvent {
         operation: String,
         result: Result<Value, String>,
     },
-    RelayStopped(Result<(), String>),
+    RelayStopped,
 }
 
 pub struct WorkerController {
@@ -177,12 +177,10 @@ fn worker_loop(command_rx: Receiver<WorkerCommand>, event_tx: Sender<WorkerEvent
                 });
             }
             WorkerCommand::StopRelay => {
-                let result = relay
-                    .take()
-                    .map(RelayAgentProcess::shutdown)
-                    .transpose()
-                    .map_err(|error| format!("{error:#}"));
-                let _ = event_tx.send(WorkerEvent::RelayStopped(result));
+                if let Some(process) = relay.take() {
+                    let _ = process.shutdown();
+                }
+                let _ = event_tx.send(WorkerEvent::RelayStopped);
             }
             WorkerCommand::Shutdown => {
                 if let Some(process) = relay.take() {
