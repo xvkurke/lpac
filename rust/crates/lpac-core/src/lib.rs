@@ -10,6 +10,7 @@ use zeroize::{Zeroize, Zeroizing};
 
 mod envelope;
 pub mod relay;
+pub mod secure_relay;
 
 pub const ENVELOPE_PREFIX: &str = "NIKLPA1:";
 
@@ -161,6 +162,10 @@ pub enum CoreError {
     InvalidEnvelope,
     #[error("invalid transfer key")]
     InvalidKey,
+    #[error("invalid device pairing code")]
+    InvalidPairingCode,
+    #[error("relay packet sender or recipient does not match the paired device")]
+    RelayPeerMismatch,
     #[error("encryption or authentication failed")]
     Crypto,
     #[error("invalid relay packet: {0}")]
