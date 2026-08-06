@@ -7,8 +7,13 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+chrono.workspace = true
 eframe.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+uuid.workspace = true
 zeroize.workspace = true
 lpac-backend = { path = "../../crates/lpac-backend" }
 lpac-core = { path = "../../crates/lpac-core" }
+lpac-relay-backend = { path = "../../crates/lpac-relay-backend" }
