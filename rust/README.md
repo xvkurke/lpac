@@ -1,72 +1,97 @@
-# NIK LPA Rust desktop layer
+# NIK LPA desktop application
 
-This directory contains the Windows desktop application and orchestration layer built around the existing `lpac`/`libeuicc` engine.
+NIK LPA is a native Windows application built around the existing `lpac`/`libeuicc` protocol engine. The C implementation remains the single owner of PC/SC, APDU, HTTP, ASN.1 processing, certificates, and SGP.22 cryptographic operations. Rust provides the desktop UI, process supervision, encrypted transfer protocol, strict relay state machine, and verification workflow.
 
-The C implementation remains the single owner of the eUICC, PC/SC connection, APDU transport, and SGP.22 protocol state. The Rust side does not implement a second smart-card or RSP stack.
+## Product modes
+
+The primary executable is `nik-lpa.exe`. One application supports three roles:
+
+- **Local LPA** — PC/SC and Internet are available on one computer. The normal `lpac profile download` path is used.
+- **Card Agent** — has the PC/SC reader and eUICC but does not contact the SM-DP+. It executes only staged ES10b operations.
+- **Server Agent** — has Internet access and the activation code but does not require a reader. It executes only staged ES9+ operations.
+
+Card Agent and Server Agent may run on two computers or as two application instances. The operator manually copies encrypted `NIKRSP2` strings between the two sessions.
+
+## Real staged RSP flow
+
+The staged path is not a simulation. The bundled C runtime exposes two long-lived helper modes:
+
+```text
+lpac relay card-agent
+lpac relay server-agent
+```
+
+They exchange correlated NDJSON with the Rust application and use the resumable `libeuicc` `_r` APIs.
+
+| Stage | Card Agent / ES10b | Server Agent / ES9+ |
+|---|---|---|
+| `INIT_REQUEST` | Get eUICC challenge and EUICCInfo1 | InitiateAuthentication |
+| `SERVER_AUTH` | AuthenticateServer | Return server-signed material and certificate |
+| `EUICC_AUTH` | Return eUICC-signed response | AuthenticateClient |
+| `DOWNLOAD_PREPARE` | PrepareDownload | Return profile metadata and SM-DP+ preparation material |
+| `EUICC_PREPARED` | Return prepare-download response and one-time key material | GetBoundProfilePackage |
+| `BOUND_PROFILE_PACKAGE` | LoadBoundProfilePackage | Return BPP |
+| `INSTALL_RESULT` | Run a fresh Profile List and verify ICCID | Receive the verified result |
+
+The Card Agent process stays alive while strings are transferred manually, keeping the PC/SC connection and required eUICC session state open. The Server Agent process similarly remains alive for the active SM-DP+ transaction.
+
+`INSTALL_RESULT` is emitted only after a separate, fresh `profile list` confirms the ICCID returned by `LoadBoundProfilePackage`.
+
+## Encrypted manual transfer
+
+Each application instance generates an X25519 identity and displays a pairing code:
+
+```text
+NIKPAIR1:<public-key>
+```
+
+After the two instances exchange pairing codes, relay packets use:
+
+```text
+NIKRSP2:<authenticated-encrypted-envelope>
+```
+
+Cryptography:
+
+- X25519 key agreement;
+- HKDF-SHA256 key derivation;
+- XChaCha20-Poly1305 authenticated encryption;
+- sender and recipient public keys bound as associated data.
+
+A packet is rejected when it is not addressed to the local identity or was not created by the paired peer. The ciphertext does not expose the activation token, confirmation code, certificates, signatures, BPP, or other payload values.
+
+Every relay packet also contains and validates:
+
+- one job UUID;
+- strict stage and sequence number;
+- direction;
+- target EID hash;
+- SM-DP+ transaction ID continuity;
+- creation time and local expiry;
+- previous-message hash.
+
+The GUI displays the protocol timeline and an audit table with timestamp, stage, encrypted packet size, and validation result.
 
 ## Components
 
-- `lpac-core`: strict activation-code parsing, redacted secret types, encrypted activation jobs, and `NIKLPA1` transfer envelopes.
-- `lpac-backend`: typed process adapter for the C `lpac` executable, NDJSON progress parsing, secure stdin input, reader discovery, runtime validation, and post-install verification.
-- `lpac-gui`: native egui/eframe Windows application for PC/SC laboratory use.
-- `fake-lpac`: deterministic process-level test harness for backend and secret-boundary tests.
+- `lpac-core` — activation parsing, secret redaction, relay state machine, NIKRSP2 pairing and encryption.
+- `lpac-backend` — legacy local-LPA process adapter, reader discovery, secure stdin, NDJSON parsing, and local ICCID verification.
+- `lpac-relay-backend` — long-lived Card Agent and Server Agent child-process supervision.
+- `lpac-gui` — primary `nik-lpa.exe`, legacy diagnostic GUI, and relay diagnostic tool.
+- `fake-lpac` — deterministic process-level backend tests.
 
-## Supported workflow
+The production GUI is split into `app`, `controller`, `logic`, `model`, `views`, `theme`, and reusable `widgets` modules.
 
-The GUI provides:
+## Secret handling
 
-- explicit PC/SC reader discovery through `lpac driver apdu list`;
-- manual reader-index fallback;
-- eUICC information lookup;
-- profile listing;
-- local profile installation from an activation string;
-- encrypted export of an activation job;
-- import and decryption of an activation job on another device;
-- one card operation at a time, executed outside the UI thread;
-- structured progress and final-result logging without activation secrets;
-- mandatory `profile list` verification after download.
-
-An installation is reported as successful only when:
-
-1. `lpac profile download` returns a successful final event containing a non-empty ICCID; and
-2. a fresh `lpac profile list` contains the same ICCID.
-
-## Secure stdin contract
-
-The Rust backend invokes the patched C CLI as:
+For local download, activation and confirmation codes are sent to the C CLI over stdin rather than argv:
 
 ```text
 lpac profile download -a -
-```
-
-or, when a confirmation code is present:
-
-```text
 lpac profile download -a - -c -
 ```
 
-The activation and confirmation codes are written as separate lines to stdin. They do not appear in argv, process listings, or application logs. The C buffers and Rust temporary buffers are cleared after use.
-
-## Encrypted transfer string
-
-The laboratory transfer format is:
-
-```text
-NIKLPA1:<base64url authenticated envelope>
-```
-
-The payload is encrypted and authenticated with XChaCha20-Poly1305. It contains:
-
-- the exact activation string;
-- an optional confirmation code;
-- optional reader and EID hints;
-- a job UUID and creation timestamp.
-
-The sender copies the `NIKLPA1` string and delivers the 256-bit transfer key through a separate trusted channel. The receiver pastes both values into the GUI, decrypts the job, reviews only redacted metadata, selects its local reader, and installs the job.
-
-After a successful import, the entered key and ciphertext fields are cleared. The decrypted job zeroizes its activation and confirmation strings when dropped.
-
-> The shared transfer key is intended for the current laboratory test. Production enrollment should use recipient public-key encryption or a device-bound key held by TPM, secure element, or another protected keystore.
+They therefore do not appear in command-line process listings. Secret GUI fields and temporary Rust/C buffers are cleared where the current types and libraries permit it. Application logs do not print activation or confirmation values.
 
 ## Build and test
 
@@ -76,56 +101,45 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo build --workspace --all-targets
 cargo test --workspace
-cargo run -p lpac-gui
+cargo build --release -p lpac-gui --bins
 ```
 
-For a local development build, place the patched `lpac.exe` next to the GUI and keep its driver/runtime layout intact, or select its absolute path in the application.
+The full repository CI additionally builds the C runtime across the existing platform matrix and builds the Windows UCRT64 bundle.
 
-## Windows desktop bundle
+## Windows bundle
 
-CI publishes one artifact:
+CI publishes:
 
 ```text
 nik-lpa-desktop-windows-x86_64
 ```
 
-The bundle contains:
+Primary files:
 
-- `nik-lpa-gui.exe`;
-- the patched `lpac.exe` built natively with UCRT64;
-- PC/SC, stdio, and WinHTTP driver DLLs;
-- `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`;
-- the lpac/libeuicc runtime DLLs;
-- `run-nik-lpa.cmd`.
+- `nik-lpa.exe` — the multi-role application;
+- `run-nik-lpa.cmd` — recommended launcher;
+- `lpac.exe` — patched C runtime with staged relay applet;
+- PC/SC and WinHTTP driver DLLs;
+- required UCRT64 runtime libraries.
 
-Extract the complete ZIP into one directory. Do not copy only the EXE files. Run either `run-nik-lpa.cmd` or `nik-lpa-gui.exe`; the GUI resolves the adjacent `lpac.exe` automatically and starts it from the bundle directory.
+The bundle also contains the old GUI and Relay Lab as diagnostic executables. They are not the primary product interface.
 
-The backend validates the bundled runtime before starting `lpac.exe`. An incomplete extraction is reported in the GUI operation log instead of triggering a Windows missing-DLL dialog.
+Extract the complete ZIP into one directory. Do not copy individual EXE files out of the bundle.
 
-System requirements:
+## Hardware acceptance test
 
-- Windows Smart Card service must be running;
-- a compatible PC/SC reader must be installed;
-- a removable eUICC must be connected for hardware operations.
+The staged release candidate is accepted only after this real test:
 
-The workflow tests the bundle with an isolated `PATH`, so it cannot accidentally use MSYS2 DLLs installed on the GitHub runner.
+1. Computer A runs Card Agent with the eUICC in a PC/SC reader and Internet blocked.
+2. Computer B runs Server Agent with Internet access and no reader.
+3. Both instances exchange `NIKPAIR1` codes once.
+4. The operator manually transfers every `NIKRSP2` string.
+5. Server Agent communicates with a real SM-DP+.
+6. Card Agent loads the returned real BPP.
+7. A fresh Profile List confirms the expected ICCID.
+8. Card Agent returns the verified `INSTALL_RESULT` to Server Agent.
+9. Packet capture on Computer A confirms that Card Agent made no network connection.
 
-## Integration coverage
+## Remaining release work
 
-The `fake-lpac` harness verifies that:
-
-- PC/SC readers are discovered through `lpac` without opening a second card connection;
-- activation and confirmation codes arrive through stdin;
-- neither secret is present in argv;
-- progress and final NDJSON events are parsed correctly;
-- structured PC/SC errors propagate to the GUI layer;
-- a successful download is followed by ICCID verification through `profile list`;
-- formatted logs do not contain the activation or confirmation code.
-
-## Roadmap
-
-1. Run a hardware smoke test against the target Windows PC/SC reader and removable eUICC.
-2. Add richer profile-management screens, cancellation, and explicit confirmation dialogs.
-3. Replace the laboratory shared-key envelope with recipient public-key encryption and device enrollment.
-4. Add replay fixtures for sanitized real `lpac` event streams.
-5. Keep the protocol/APDU implementation in `libeuicc` until an independently tested Rust replacement provides a concrete maintenance or safety benefit.
+The current implementation is a hardware-test candidate, not yet a signed final release. Before declaring it production-ready, the project still needs the two-PC hardware acceptance test, encrypted persistent identity/session storage using Windows protection APIs, crash-resume coverage, `.nikrsp` file import/export for large BPP payloads, installer packaging, and code signing.
