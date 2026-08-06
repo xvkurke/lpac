@@ -22,6 +22,7 @@ target_sources(
         applet/chip.c
         applet/notification.c
         applet/profile.c
+        applet/relay.c
         applet/version.c
         applet.c
         jprint.c
