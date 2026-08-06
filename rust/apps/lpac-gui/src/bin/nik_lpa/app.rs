@@ -4,6 +4,7 @@ use eframe::egui;
 use lpac_backend::PcscReader;
 use lpac_core::secure_relay::{DeviceIdentity, PeerIdentity};
 use lpac_relay_backend::RelayAgentRole;
+use serde_json::Value;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
@@ -47,6 +48,7 @@ pub struct NikLpaApp {
     pub(crate) busy: bool,
     pub(crate) start_card_after_chip_info: bool,
     pub(crate) verify_after_relay_stop: Option<String>,
+    pub(crate) pending_install_payload: Option<Value>,
     pub(crate) card_eid: Option<String>,
     pub(crate) activation_code: String,
     pub(crate) confirmation_code: String,
@@ -78,6 +80,7 @@ impl Default for NikLpaApp {
             busy: false,
             start_card_after_chip_info: false,
             verify_after_relay_stop: None,
+            pending_install_payload: None,
             card_eid: None,
             activation_code: String::new(),
             confirmation_code: String::new(),
