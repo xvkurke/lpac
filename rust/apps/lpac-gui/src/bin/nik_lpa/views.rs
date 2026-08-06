@@ -140,7 +140,11 @@ impl NikLpaApp {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 toggle_theme = ui
-                    .button(if self.dark_mode { "Світла" } else { "Темна" })
+                    .button(if self.dark_mode {
+                        "Світла"
+                    } else {
+                        "Темна"
+                    })
                     .clicked();
                 if self.busy {
                     ui.spinner();
