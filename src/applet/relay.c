@@ -186,8 +186,8 @@ static int handle_card_authenticate_server(const char *request_id, const char *o
     uint8_t *transaction_id = NULL;
     uint32_t transaction_id_len = 0;
 
-    if (server_signed_1 == NULL || server_signature_1 == NULL || euicc_ci_pkid == NULL
-        || server_certificate == NULL) {
+    if (server_signed_1 == NULL || server_signature_1 == NULL || euicc_ci_pkid == NULL ||
+        server_certificate == NULL) {
         return print_invalid_request(request_id, operation, "Missing server authentication material");
     }
 
@@ -203,8 +203,7 @@ static int handle_card_authenticate_server(const char *request_id, const char *o
     };
 
     if (es10b_authenticate_server_r(&euicc_ctx, &transaction_id, &transaction_id_len,
-                                    &authenticate_server_response, &parameters, &user_parameters)
-        < 0) {
+                                    &authenticate_server_response, &parameters, &user_parameters) < 0) {
         free(transaction_id);
         free(authenticate_server_response);
         return print_response(request_id, operation, false, NULL, "AUTHENTICATE_SERVER_FAILED",
@@ -234,8 +233,8 @@ static int handle_card_prepare_download(const char *request_id, const char *oper
     const char *confirmation_code = json_string(input, "confirmationCode");
     char *prepare_download_response = NULL;
 
-    if (profile_metadata == NULL || smdp_signed_2 == NULL || smdp_signature_2 == NULL
-        || smdp_certificate == NULL) {
+    if (profile_metadata == NULL || smdp_signed_2 == NULL || smdp_signature_2 == NULL ||
+        smdp_certificate == NULL) {
         return print_invalid_request(request_id, operation, "Missing profile preparation material");
     }
 
@@ -272,8 +271,7 @@ static int handle_card_install_bpp(const char *request_id, const char *operation
     }
 
     struct es10b_load_bound_profile_package_result result = {0};
-    const int operation_result =
-        es10b_load_bound_profile_package_r(&euicc_ctx, &result, bound_profile_package);
+    const int operation_result = es10b_load_bound_profile_package_r(&euicc_ctx, &result, bound_profile_package);
 
     cJSON *payload = cJSON_CreateObject();
     if (payload == NULL) {
@@ -298,7 +296,8 @@ static int handle_card_install_bpp(const char *request_id, const char *operation
 static int handle_card_cancel(const char *request_id, const char *operation, const cJSON *input,
                               struct relay_card_state *state) {
     const cJSON *reason_item = cJSON_GetObjectItemCaseSensitive(input, "reason");
-    const int reason = cJSON_IsNumber(reason_item) ? reason_item->valueint : ES10B_CANCEL_SESSION_REASON_ENDUSERREJECTION;
+    const int reason = cJSON_IsNumber(reason_item) ? reason_item->valueint
+                                                   : ES10B_CANCEL_SESSION_REASON_ENDUSERREJECTION;
     char *cancel_response = NULL;
 
     if (state->transaction_id == NULL || state->transaction_id_len == 0) {
@@ -338,9 +337,8 @@ static int handle_server_initiate(const char *request_id, const char *operation,
         return print_invalid_request(request_id, operation, "Missing server address, challenge, or EUICCInfo1");
     }
 
-    if (es9p_initiate_authentication_r(&euicc_ctx, &transaction_id, &response, server_address,
-                                       euicc_challenge, euicc_info_1)
-        < 0) {
+    if (es9p_initiate_authentication_r(&euicc_ctx, &transaction_id, &response, server_address, euicc_challenge,
+                                       euicc_info_1) < 0) {
         free(transaction_id);
         es10b_authenticate_server_param_free(&response);
         return print_response(request_id, operation, false, NULL, "INITIATE_AUTHENTICATION_FAILED",
@@ -375,8 +373,7 @@ static int handle_server_authenticate_client(const char *request_id, const char 
     }
 
     if (es9p_authenticate_client_r(&euicc_ctx, &response, server_address, transaction_id,
-                                   authenticate_server_response)
-        < 0) {
+                                   authenticate_server_response) < 0) {
         es10b_prepare_download_param_free(&response);
         return print_response(request_id, operation, false, NULL, "AUTHENTICATE_CLIENT_FAILED",
                               euicc_ctx.http.status.message);
@@ -407,11 +404,9 @@ static int handle_server_get_bpp(const char *request_id, const char *operation, 
     }
 
     if (es9p_get_bound_profile_package_r(&euicc_ctx, &bound_profile_package, server_address, transaction_id,
-                                         prepare_download_response)
-        < 0) {
+                                         prepare_download_response) < 0) {
         free(bound_profile_package);
-        return print_response(request_id, operation, false, NULL, "GET_BPP_FAILED",
-                              euicc_ctx.http.status.message);
+        return print_response(request_id, operation, false, NULL, "GET_BPP_FAILED", euicc_ctx.http.status.message);
     }
 
     cJSON *payload = cJSON_CreateObject();
