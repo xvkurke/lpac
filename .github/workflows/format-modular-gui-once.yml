@@ -1,0 +1,39 @@
+name: Format modular production GUI once
+
+on:
+  push:
+    branches:
+      - agent/rust-gui-encrypted-transfer
+    paths:
+      - ".github/workflows/format-modular-gui-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/rust-gui-encrypted-transfer
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format Rust workspace
+        working-directory: rust
+        run: cargo fmt --all
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No formatter changes"
+            exit 0
+          fi
+          git add rust
+          git commit -m "Format modular production GUI"
+          git push origin HEAD:agent/rust-gui-encrypted-transfer
