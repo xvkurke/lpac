@@ -14,35 +14,60 @@ use crate::{
 impl NikLpaApp {
     pub(crate) fn render_root(&mut self, ui: &mut egui::Ui) {
         if self.mode == AppMode::Welcome {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.set_max_width(1_150.0);
-                ui.add_space(20.0);
-                self.render_welcome(ui);
-            });
-            return;
-        }
-
-        ui.horizontal_top(|ui| {
-            self.render_sidebar(ui);
-            ui.separator();
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    ui.set_min_width(720.0);
-                    ui.set_max_width(1_050.0);
-                    ui.add_space(18.0);
-                    self.render_header(ui);
-                    match self.page {
-                        Page::Dashboard => self.render_dashboard(ui),
-                        Page::Profiles => self.render_profiles(ui),
-                        Page::Install => self.render_install(ui),
-                        Page::Transfer => self.render_transfer(ui),
-                        Page::Sessions => self.render_sessions(ui),
-                        Page::Logs => self.render_logs(ui),
-                        Page::Settings => self.render_settings(ui),
-                    }
-                    ui.add_space(24.0);
+                    ui.set_min_width(ui.available_width());
+                    ui.add_space(20.0);
+                    self.render_welcome(ui);
                 });
+            return;
+        }
+
+        let available_height = ui.available_height();
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+
+            ui.allocate_ui_with_layout(
+                egui::vec2(240.0, available_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| self.render_sidebar(ui),
+            );
+
+            ui.separator();
+
+            let content_size = ui.available_size();
+            ui.allocate_ui_with_layout(
+                content_size,
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            let content_width = (ui.available_width() - 48.0).max(640.0);
+                            ui.set_min_width(content_width);
+                            ui.set_max_width(1_240.0);
+                            ui.add_space(18.0);
+                            ui.horizontal(|ui| {
+                                ui.add_space(24.0);
+                                ui.vertical(|ui| {
+                                    ui.set_min_width(content_width);
+                                    self.render_header(ui);
+                                    match self.page {
+                                        Page::Dashboard => self.render_dashboard(ui),
+                                        Page::Profiles => self.render_profiles(ui),
+                                        Page::Install => self.render_install(ui),
+                                        Page::Transfer => self.render_transfer(ui),
+                                        Page::Sessions => self.render_sessions(ui),
+                                        Page::Logs => self.render_logs(ui),
+                                        Page::Settings => self.render_settings(ui),
+                                    }
+                                    ui.add_space(24.0);
+                                });
+                            });
+                        });
+                },
+            );
         });
     }
 
@@ -88,6 +113,8 @@ impl NikLpaApp {
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
         let mut change_mode = false;
+        let sidebar_size = ui.available_size();
+
         egui::Frame::new()
             .fill(if self.dark_mode {
                 egui::Color32::from_rgb(15, 23, 42)
@@ -96,33 +123,45 @@ impl NikLpaApp {
             })
             .inner_margin(16.0)
             .show(ui, |ui| {
-                ui.set_min_width(205.0);
-                ui.heading("NIK LPA");
-                ui.small(self.mode.title());
-                ui.separator();
+                ui.set_min_size(sidebar_size - egui::vec2(32.0, 32.0));
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.heading("NIK LPA");
+                    ui.small(self.mode.title());
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(6.0);
 
-                for page in Page::ALL {
-                    let allowed = !matches!(
-                        (self.mode, page),
-                        (AppMode::ServerAgent, Page::Profiles | Page::Install)
-                    );
-                    if ui
-                        .add_enabled(
-                            allowed,
-                            egui::Button::new(page.label()).selected(self.page == page),
-                        )
-                        .clicked()
-                    {
-                        self.page = page;
+                    for page in Page::ALL {
+                        let allowed = !matches!(
+                            (self.mode, page),
+                            (AppMode::ServerAgent, Page::Profiles | Page::Install)
+                        );
+                        if ui
+                            .add_enabled(
+                                allowed,
+                                egui::Button::new(page.label())
+                                    .selected(self.page == page)
+                                    .min_size(egui::vec2(ui.available_width(), 36.0)),
+                            )
+                            .clicked()
+                        {
+                            self.page = page;
+                        }
                     }
-                }
 
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    change_mode = ui.button("Змінити режим").clicked();
-                    ui.label(if self.relay_running {
-                        "● Relay Agent активний"
-                    } else {
-                        "○ Relay Agent зупинений"
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                        change_mode = ui
+                            .add_sized(
+                                [ui.available_width(), 34.0],
+                                egui::Button::new("Змінити режим"),
+                            )
+                            .clicked();
+                        ui.add_space(6.0);
+                        ui.label(if self.relay_running {
+                            "● Relay Agent активний"
+                        } else {
+                            "○ Relay Agent зупинений"
+                        });
                     });
                 });
             });
@@ -160,6 +199,11 @@ impl NikLpaApp {
     }
 
     fn render_dashboard(&mut self, ui: &mut egui::Ui) {
+        if matches!(self.mode, AppMode::CardAgent | AppMode::Local) {
+            self.render_reader_selector(ui);
+            ui.add_space(12.0);
+        }
+
         ui.columns(3, |columns| {
             metric_card(&mut columns[0], "Режим", self.mode.title());
             metric_card(
