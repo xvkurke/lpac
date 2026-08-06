@@ -1,0 +1,204 @@
+name: Atomic production GUI compile repair
+
+on:
+  push:
+    branches:
+      - agent/rust-gui-encrypted-transfer
+    paths:
+      - ".github/workflows/repair-production-gui-compile-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: agent/rust-gui-encrypted-transfer
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Repair production GUI ownership and egui API usage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("rust/apps/lpac-gui/src/bin/nik-lpa.rs")
+          source = path.read_text(encoding="utf-8")
+
+          source = source.replace(
+              "use model::{AppMode, Page, RelaySession, SessionSide, eid_hash};",
+              "use model::{AppMode, Page, RelaySession, eid_hash};",
+          )
+          source = source.replace(
+              "    let mut style = (*context.style()).clone();",
+              "    let theme = if dark { egui::Theme::Dark } else { egui::Theme::Light };\n    let mut style = (*context.style_of(theme)).clone();",
+          )
+          source = source.replace(
+              "    context.set_style(style);",
+              "    context.set_style_of(theme, style);",
+          )
+
+          if "    server_bootstrap_input: String," not in source:
+              source = source.replace(
+                  "    peer_code_input: String,\n    peer: Option<PeerIdentity>,",
+                  "    peer_code_input: String,\n    server_bootstrap_input: String,\n    peer: Option<PeerIdentity>,",
+              )
+              source = source.replace(
+                  "            peer_code_input: String::new(),\n            peer: None,",
+                  "            peer_code_input: String::new(),\n            server_bootstrap_input: String::new(),\n            peer: None,",
+              )
+              source = source.replace(
+                  "        self.peer_code_input.zeroize();\n",
+                  "        self.peer_code_input.zeroize();\n        self.server_bootstrap_input.zeroize();\n",
+              )
+
+          source, count = re.subn(
+              r'''\n        if self\.mode == AppMode::ServerAgent && self\.session\.is_none\(\) \{.*?\n            return;\n        \}\n\n        let packet = \{''',
+              "\n        let packet = {",
+              source,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one obsolete import branch, got {count}")
+
+          source, count = re.subn(
+              r'''\n    fn pending_server_incoming_text\(&self\) -> Option<&str> \{.*?\n    \}\n\n    fn process_server_init_request''',
+              "\n    fn process_server_init_request",
+              source,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one obsolete bootstrap helper, got {count}")
+
+          bootstrap_start = source.index(
+              "        if self.mode == AppMode::ServerAgent && self.session.is_none() && self.relay_running {"
+          )
+          bootstrap_end = source.index("\n        let Some(session) = self.session.as_mut() else {", bootstrap_start)
+          bootstrap = '''        if self.mode == AppMode::ServerAgent && self.session.is_none() && self.relay_running {
+              let mut accept_bootstrap = false;
+              card(ui, |ui| {
+                  ui.heading("Вхідний INIT_REQUEST");
+                  ui.label("Вставте NIKRSP2 строку, створену Card Agent.");
+                  ui.add(
+                      egui::TextEdit::multiline(&mut self.server_bootstrap_input)
+                          .desired_rows(8)
+                          .desired_width(f32::INFINITY)
+                          .font(egui::TextStyle::Monospace),
+                  );
+                  accept_bootstrap = ui
+                      .add_enabled(
+                          !self.busy && !self.server_bootstrap_input.trim().is_empty(),
+                          egui::Button::new("Прийняти INIT_REQUEST"),
+                      )
+                      .clicked();
+              });
+
+              if accept_bootstrap {
+                  let text = std::mem::take(&mut self.server_bootstrap_input);
+                  let peer = match self.peer {
+                      Some(peer) => peer,
+                      None => {
+                          self.add_log("ПОМИЛКА: peer не спарений");
+                          return;
+                      }
+                  };
+                  match self.identity.decrypt::<RelayPacket>(&peer, text.trim()) {
+                      Ok(packet) if packet.stage == RelayStage::InitRequest => {
+                          match RelaySession::new_server(packet) {
+                              Ok(mut session) => {
+                                  session.timeline.push(model::TimelineEntry {
+                                      stage: RelayStage::InitRequest,
+                                      timestamp: Utc::now(),
+                                      packet_size: text.trim().len(),
+                                      note: "Отримано, розшифровано та перевірено".into(),
+                                  });
+                                  self.session = Some(session);
+                                  self.process_server_init_request();
+                              }
+                              Err(error) => {
+                                  self.add_log(format!("ПОМИЛКА INIT_REQUEST: {error}"))
+                              }
+                          }
+                      }
+                      Ok(packet) => self.add_log(format!(
+                          "ПОМИЛКА: очікувався INIT_REQUEST, отримано {}",
+                          packet.stage.code()
+                      )),
+                      Err(error) => self.add_log(format!("ПОМИЛКА розшифрування: {error}")),
+                  }
+              }
+              return;
+          }
+          '''
+          source = source[:bootstrap_start] + bootstrap + source[bootstrap_end:]
+
+          incoming_start = source.index(
+              '        ui.add_space(10.0);\n        card(ui, |ui| {\n            ui.heading("Вхідний пакет");'
+          )
+          incoming_end = source.index("\n    fn render_timeline", incoming_start)
+          incoming = '''        ui.add_space(10.0);
+          let mut import_clicked = false;
+          card(ui, |ui| {
+              ui.heading("Вхідний пакет");
+              ui.label(
+                  session
+                      .expected_incoming()
+                      .map(|stage| format!("Очікується {}", stage.code()))
+                      .unwrap_or_else(|| "Новий пакет не очікується".into()),
+              );
+              ui.add(
+                  egui::TextEdit::multiline(&mut session.incoming_text)
+                      .desired_rows(8)
+                      .desired_width(f32::INFINITY)
+                      .font(egui::TextStyle::Monospace),
+              );
+              import_clicked = ui
+                  .add_enabled(
+                      !self.busy && session.expected_incoming().is_some(),
+                      egui::Button::new("Розшифрувати, перевірити та виконати"),
+                  )
+                  .clicked();
+          });
+          if import_clicked {
+              self.import_incoming();
+          }
+      }
+  '''
+          source = source[:incoming_start] + incoming + source[incoming_end:]
+
+          if "static mut SERVER_BOOTSTRAP" in source:
+              raise SystemExit("unsafe bootstrap state remains")
+
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Format Rust workspace
+        working-directory: rust
+        run: cargo fmt --all
+
+      - name: Remove one-shot repair workflows
+        shell: bash
+        run: |
+          rm -f .github/workflows/repair-production-ui-once.yml
+          rm -f .github/workflows/repair-production-gui-compile-once.yml
+
+      - name: Commit repaired production GUI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/apps/lpac-gui/src/bin/nik-lpa.rs .github/workflows
+          git commit -m "Repair production relay GUI ownership and egui integration"
+          git push origin HEAD:agent/rust-gui-encrypted-transfer
