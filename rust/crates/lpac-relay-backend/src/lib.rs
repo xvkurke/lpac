@@ -206,7 +206,6 @@ impl RelayAgentProcess {
 
     pub fn shutdown(mut self) -> Result<()> {
         let _ = self.request("shutdown", json!({}));
-        drop(self.stdin);
         let status = self
             .child
             .wait()
