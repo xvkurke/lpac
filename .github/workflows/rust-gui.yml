@@ -53,7 +53,7 @@ jobs:
         working-directory: rust
         run: cargo test --workspace
 
-      - name: Build release GUIs
+      - name: Build release applications
         working-directory: rust
         run: cargo build --release -p lpac-gui --bins
 
@@ -85,15 +85,22 @@ jobs:
           $ErrorActionPreference = "Stop"
           New-Item -ItemType Directory -Force desktop-bundle/driver | Out-Null
           Get-ChildItem desktop-bundle -Filter "driver_*.dll" | Copy-Item -Destination desktop-bundle/driver -Force
-          Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-gui.exe
+          Copy-Item rust/target/release/nik-lpa.exe desktop-bundle/nik-lpa.exe
+          Copy-Item rust/target/release/lpac-gui.exe desktop-bundle/nik-lpa-legacy-gui.exe
           Copy-Item rust/target/release/nik-rsp-relay-lab.exe desktop-bundle/nik-rsp-relay-lab.exe
           Copy-Item rust/README.md desktop-bundle/NIK-LPA-README.md
           @'
           @echo off
           cd /d "%~dp0"
           set "PATH=%CD%;%CD%\lib;%SystemRoot%\System32;%SystemRoot%"
-          ".\nik-lpa-gui.exe"
+          ".\nik-lpa.exe"
           '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa.cmd
+          @'
+          @echo off
+          cd /d "%~dp0"
+          set "PATH=%CD%;%CD%\lib;%SystemRoot%\System32;%SystemRoot%"
+          ".\nik-lpa-legacy-gui.exe"
+          '@ | Set-Content -Encoding ascii desktop-bundle/run-nik-lpa-legacy.cmd
           @'
           @echo off
           cd /d "%~dp0"
@@ -106,7 +113,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           $required = @(
             "desktop-bundle/lpac.exe",
-            "desktop-bundle/nik-lpa-gui.exe",
+            "desktop-bundle/nik-lpa.exe",
+            "desktop-bundle/nik-lpa-legacy-gui.exe",
             "desktop-bundle/nik-rsp-relay-lab.exe",
             "desktop-bundle/libgcc_s_seh-1.dll",
             "desktop-bundle/libwinpthread-1.dll",
@@ -115,6 +123,7 @@ jobs:
             "desktop-bundle/driver/driver_http_stdio.dll",
             "desktop-bundle/driver/driver_http_winhttp.dll",
             "desktop-bundle/run-nik-lpa.cmd",
+            "desktop-bundle/run-nik-lpa-legacy.cmd",
             "desktop-bundle/run-nik-rsp-relay-lab.cmd"
           )
           foreach ($path in $required) {
