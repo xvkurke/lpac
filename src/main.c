@@ -148,12 +148,10 @@ void main_fini_euicc(void) {
 bool check_windows_version() {
     DWORDLONG dwlConditionMask = 0;
 
-    OSVERSIONINFOEX osvi = {
-        .dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX),
-        .dwMajorVersion = 10,
-        .dwMinorVersion = 0,
-        .dwBuildNumber = 18362
-    };
+    OSVERSIONINFOEX osvi = {.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX),
+                            .dwMajorVersion = 10,
+                            .dwMinorVersion = 0,
+                            .dwBuildNumber = 18362};
 
     VER_SET_CONDITION(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
     VER_SET_CONDITION(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
