@@ -30,7 +30,7 @@ fn main() -> eframe::Result<()> {
         "NIK LPA",
         options,
         Box::new(|creation_context| {
-            theme::configure(&creation_context.egui_ctx, false);
+            theme::configure(&creation_context.egui_ctx, true);
             Ok(Box::new(NikLpaApp::default()))
         }),
     )
