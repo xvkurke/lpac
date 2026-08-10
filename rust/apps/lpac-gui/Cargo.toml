@@ -6,8 +6,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aetna-fonts.workspace = true
 anyhow.workspace = true
+base64.workspace = true
 chrono.workspace = true
 eframe.workspace = true
 serde.workspace = true
