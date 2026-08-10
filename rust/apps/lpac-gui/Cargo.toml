@@ -6,6 +6,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+aetna-fonts-roboto.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 eframe.workspace = true
