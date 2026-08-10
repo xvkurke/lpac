@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 #[path = "nik_lpa/app.rs"]
 mod app;
 #[path = "nik_lpa/controller.rs"]
