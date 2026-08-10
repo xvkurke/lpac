@@ -2,7 +2,6 @@ use chrono::{DateTime, TimeDelta, Utc};
 use lpac_core::{
     CoreError,
     relay::{RelayPacket, RelayStage},
-    secure_relay::{DeviceIdentity, PeerIdentity},
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,6 +9,7 @@ use uuid::Uuid;
 use zeroize::Zeroize;
 
 pub const SESSION_LOCAL_TTL_HOURS: i64 = 72;
+pub const DEBUG_PACKET_PREFIX: &str = "NIKRSP-DEBUG1:";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -23,7 +23,7 @@ impl AppMode {
     pub fn title(self) -> &'static str {
         match self {
             Self::Welcome => "Вибір режиму",
-            Self::Local => "Локальний LPA",
+            Self::Local => "Local LPA",
             Self::CardAgent => "Card Agent",
             Self::ServerAgent => "Server Agent",
         }
@@ -31,10 +31,10 @@ impl AppMode {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Welcome => "Оберіть, де працює eUICC і де доступний SM-DP+.",
-            Self::Local => "PC/SC та Інтернет доступні на одному комп'ютері.",
-            Self::CardAgent => "Цей комп'ютер працює з eUICC без доступу до Інтернету.",
-            Self::ServerAgent => "Цей комп'ютер працює з SM-DP+ без доступу до рідера.",
+            Self::Welcome => "Оберіть режим роботи",
+            Self::Local => "PC/SC + SM-DP+",
+            Self::CardAgent => "PC/SC / eUICC",
+            Self::ServerAgent => "SM-DP+ / ES9+",
         }
     }
 }
@@ -66,7 +66,7 @@ impl Page {
             Self::Dashboard => "Огляд",
             Self::Profiles => "Профілі",
             Self::Install => "Встановлення",
-            Self::Transfer => "Ручна передача",
+            Self::Transfer => "RSP Relay",
             Self::Sessions => "Сесії",
             Self::Logs => "Журнал",
             Self::Settings => "Налаштування",
@@ -113,6 +113,13 @@ impl SessionSide {
                     | RelayStage::BoundProfilePackage
                     | RelayStage::CompleteAck
             ),
+        }
+    }
+
+    pub fn peer_label(self) -> &'static str {
+        match self {
+            Self::Card => "Server Agent",
+            Self::Server => "Card Agent",
         }
     }
 }
@@ -165,7 +172,7 @@ impl RelaySession {
             timeline: Vec::new(),
             incoming_text: String::new(),
             outgoing_text: String::new(),
-            status: "Початковий пакет eUICC готовий до передачі".into(),
+            status: "INIT_REQUEST готовий".into(),
             completed: false,
         })
     }
@@ -181,7 +188,7 @@ impl RelaySession {
             timeline: Vec::new(),
             incoming_text: String::new(),
             outgoing_text: String::new(),
-            status: "Початковий пакет eUICC прийнято".into(),
+            status: "INIT_REQUEST прийнято".into(),
             completed: false,
         })
     }
@@ -215,7 +222,7 @@ impl RelaySession {
             stage: packet.stage,
             timestamp: Utc::now(),
             packet_size: encoded_size,
-            note: "Отримано, розшифровано та перевірено".into(),
+            note: "Прийнято та перевірено".into(),
         });
         self.packets.push(packet);
         self.incoming_text.zeroize();
@@ -271,28 +278,32 @@ impl RelaySession {
         Ok(packet)
     }
 
-    pub fn set_outgoing(
-        &mut self,
-        identity: &DeviceIdentity,
-        peer: &PeerIdentity,
-        packet: &RelayPacket,
-    ) -> Result<(), CoreError> {
-        self.outgoing_text = identity.encrypt(peer, packet)?;
+    pub fn set_outgoing(&mut self, packet: &RelayPacket) -> Result<(), CoreError> {
+        let json = serde_json::to_string(packet)?;
+        self.outgoing_text = format!("{DEBUG_PACKET_PREFIX}{json}");
         self.timeline.push(TimelineEntry {
             stage: packet.stage,
             timestamp: Utc::now(),
             packet_size: self.outgoing_text.len(),
-            note: "Створено зашифрований NIKRSP2 пакет".into(),
+            note: "Створено plaintext debug packet".into(),
         });
         Ok(())
     }
 
-    pub fn decode_incoming(
-        &self,
-        identity: &DeviceIdentity,
-        peer: &PeerIdentity,
-    ) -> Result<RelayPacket, CoreError> {
-        identity.decrypt(peer, self.incoming_text.trim())
+    pub fn decode_incoming(&self) -> Result<RelayPacket, CoreError> {
+        decode_debug_packet(self.incoming_text.trim())
+    }
+}
+
+pub fn decode_debug_packet(text: &str) -> Result<RelayPacket, CoreError> {
+    let json = text.strip_prefix(DEBUG_PACKET_PREFIX).unwrap_or(text);
+    Ok(serde_json::from_str(json)?)
+}
+
+pub fn pretty_debug_packet(text: &str) -> String {
+    match decode_debug_packet(text.trim()) {
+        Ok(packet) => serde_json::to_string_pretty(&packet).unwrap_or_else(|_| text.to_owned()),
+        Err(_) => text.to_owned(),
     }
 }
 
@@ -315,4 +326,25 @@ impl Drop for RelaySession {
 
 pub fn eid_hash(eid: &str) -> String {
     format!("{:x}", Sha256::digest(eid.as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn plaintext_debug_packet_round_trips() {
+        let mut session = RelaySession::new_card("eid-hash".into(), json!({
+            "euiccChallenge": "visible",
+            "euiccInfo1": "visible-too"
+        }))
+        .unwrap();
+        let packet = session.last_packet().cloned().unwrap();
+        session.set_outgoing(&packet).unwrap();
+        assert!(session.outgoing_text.starts_with(DEBUG_PACKET_PREFIX));
+        assert!(session.outgoing_text.contains("euiccChallenge"));
+        let decoded = decode_debug_packet(&session.outgoing_text).unwrap();
+        assert_eq!(decoded, packet);
+    }
 }
