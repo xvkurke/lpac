@@ -18,7 +18,7 @@ impl NikLpaApp {
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
-                    ui.add_space(20.0);
+                    ui.add_space(16.0);
                     self.render_welcome(ui);
                 });
             return;
@@ -28,12 +28,16 @@ impl NikLpaApp {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
 
+            let sidebar_width = if ui.available_width() < 1_050.0 {
+                180.0
+            } else {
+                210.0
+            };
             ui.allocate_ui_with_layout(
-                egui::vec2(240.0, available_height),
+                egui::vec2(sidebar_width, available_height),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| self.render_sidebar(ui),
             );
-
             ui.separator();
 
             let content_size = ui.available_size();
@@ -44,14 +48,12 @@ impl NikLpaApp {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                            let content_width = (ui.available_width() - 48.0).max(640.0);
-                            ui.set_min_width(content_width);
-                            ui.set_max_width(1_240.0);
-                            ui.add_space(18.0);
+                            let width = (ui.available_width() - 32.0).max(320.0);
+                            ui.add_space(12.0);
                             ui.horizontal(|ui| {
-                                ui.add_space(24.0);
+                                ui.add_space(16.0);
                                 ui.vertical(|ui| {
-                                    ui.set_min_width(content_width);
+                                    ui.set_width(width);
                                     self.render_header(ui);
                                     match self.page {
                                         Page::Dashboard => self.render_dashboard(ui),
@@ -62,7 +64,7 @@ impl NikLpaApp {
                                         Page::Logs => self.render_logs(ui),
                                         Page::Settings => self.render_settings(ui),
                                     }
-                                    ui.add_space(24.0);
+                                    ui.add_space(20.0);
                                 });
                             });
                         });
@@ -73,39 +75,66 @@ impl NikLpaApp {
 
     fn render_welcome(&mut self, ui: &mut egui::Ui) {
         ui.vertical_centered(|ui| {
-            ui.add_space(50.0);
+            ui.add_space(32.0);
             ui.heading("NIK LPA");
             ui.label("Керування eUICC та ручний staged RSP без Інтернету на Card Agent");
-            ui.add_space(28.0);
+            ui.add_space(22.0);
         });
 
         let mut selected = None;
-        ui.columns(3, |columns| {
-            if role_card(
-                &mut columns[0],
-                "Локальний LPA",
-                "Рідер та Інтернет на одному ПК. Звичайне встановлення і керування профілями.",
-                "Обрати режим",
-            ) {
-                selected = Some(AppMode::Local);
-            }
-            if role_card(
-                &mut columns[1],
-                "Card Agent",
-                "Працює з eUICC та PC/SC. Мережеві ES9+ запити не виконує.",
-                "Обрати режим",
-            ) {
-                selected = Some(AppMode::CardAgent);
-            }
-            if role_card(
-                &mut columns[2],
-                "Server Agent",
-                "Працює з activation code та SM-DP+. Рідер не потрібен.",
-                "Обрати режим",
-            ) {
-                selected = Some(AppMode::ServerAgent);
-            }
-        });
+        if ui.available_width() >= 900.0 {
+            ui.columns(3, |columns| {
+                if role_card(
+                    &mut columns[0],
+                    "Локальний LPA",
+                    "Рідер та Інтернет на одному ПК. Звичайне встановлення і керування профілями.",
+                    "Обрати режим",
+                ) {
+                    selected = Some(AppMode::Local);
+                }
+                if role_card(
+                    &mut columns[1],
+                    "Card Agent",
+                    "Працює з eUICC та PC/SC. Мережеві ES9+ запити не виконує.",
+                    "Обрати режим",
+                ) {
+                    selected = Some(AppMode::CardAgent);
+                }
+                if role_card(
+                    &mut columns[2],
+                    "Server Agent",
+                    "Працює з activation code та SM-DP+. Рідер не потрібен.",
+                    "Обрати режим",
+                ) {
+                    selected = Some(AppMode::ServerAgent);
+                }
+            });
+        } else {
+            card(ui, |ui| {
+                ui.heading("Локальний LPA");
+                ui.label("Рідер та Інтернет на одному ПК.");
+                if ui.button("Обрати локальний режим").clicked() {
+                    selected = Some(AppMode::Local);
+                }
+            });
+            ui.add_space(8.0);
+            card(ui, |ui| {
+                ui.heading("Card Agent");
+                ui.label("Працює з eUICC та PC/SC без ES9+ HTTP.");
+                if ui.button("Обрати Card Agent").clicked() {
+                    selected = Some(AppMode::CardAgent);
+                }
+            });
+            ui.add_space(8.0);
+            card(ui, |ui| {
+                ui.heading("Server Agent");
+                ui.label("Працює з activation code та SM-DP+ без рідера.");
+                if ui.button("Обрати Server Agent").clicked() {
+                    selected = Some(AppMode::ServerAgent);
+                }
+            });
+        }
+
         if let Some(mode) = selected {
             self.reset_mode(mode);
         }
@@ -121,15 +150,15 @@ impl NikLpaApp {
             } else {
                 egui::Color32::WHITE
             })
-            .inner_margin(16.0)
+            .inner_margin(12.0)
             .show(ui, |ui| {
-                ui.set_min_size(sidebar_size - egui::vec2(32.0, 32.0));
+                ui.set_min_size(sidebar_size - egui::vec2(24.0, 24.0));
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     ui.heading("NIK LPA");
                     ui.small(self.mode.title());
-                    ui.add_space(8.0);
-                    ui.separator();
                     ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(4.0);
 
                     for page in Page::ALL {
                         let allowed = !matches!(
@@ -141,7 +170,7 @@ impl NikLpaApp {
                                 allowed,
                                 egui::Button::new(page.label())
                                     .selected(self.page == page)
-                                    .min_size(egui::vec2(ui.available_width(), 36.0)),
+                                    .min_size(egui::vec2(ui.available_width(), 32.0)),
                             )
                             .clicked()
                         {
@@ -152,12 +181,12 @@ impl NikLpaApp {
                     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                         change_mode = ui
                             .add_sized(
-                                [ui.available_width(), 34.0],
+                                [ui.available_width(), 32.0],
                                 egui::Button::new("Змінити режим"),
                             )
                             .clicked();
-                        ui.add_space(6.0);
-                        ui.label(if self.relay_running {
+                        ui.add_space(4.0);
+                        ui.small(if self.relay_running {
                             "● Relay Agent активний"
                         } else {
                             "○ Relay Agent зупинений"
@@ -165,6 +194,7 @@ impl NikLpaApp {
                     });
                 });
             });
+
         if change_mode {
             self.reset_mode(AppMode::Welcome);
         }
@@ -172,18 +202,14 @@ impl NikLpaApp {
 
     fn render_header(&mut self, ui: &mut egui::Ui) {
         let mut toggle_theme = false;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.vertical(|ui| {
                 ui.heading(self.page.label());
                 ui.label(self.mode.description());
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 toggle_theme = ui
-                    .button(if self.dark_mode {
-                        "Світла"
-                    } else {
-                        "Темна"
-                    })
+                    .button(if self.dark_mode { "Світла" } else { "Темна" })
                     .clicked();
                 if self.busy {
                     ui.spinner();
@@ -195,19 +221,41 @@ impl NikLpaApp {
             self.dark_mode = !self.dark_mode;
             theme::configure(ui.ctx(), self.dark_mode);
         }
-        ui.add_space(10.0);
+        ui.add_space(8.0);
     }
 
     fn render_dashboard(&mut self, ui: &mut egui::Ui) {
         if matches!(self.mode, AppMode::CardAgent | AppMode::Local) {
             self.render_reader_selector(ui);
-            ui.add_space(12.0);
+            ui.add_space(10.0);
         }
 
-        ui.columns(3, |columns| {
-            metric_card(&mut columns[0], "Режим", self.mode.title());
+        if ui.available_width() >= 760.0 {
+            ui.columns(3, |columns| {
+                metric_card(&mut columns[0], "Режим", self.mode.title());
+                metric_card(
+                    &mut columns[1],
+                    "Pairing",
+                    if self.peer.is_some() {
+                        "Підключено"
+                    } else {
+                        "Не налаштовано"
+                    },
+                );
+                metric_card(
+                    &mut columns[2],
+                    "Сесія",
+                    self.session
+                        .as_ref()
+                        .map(|session| session.status.as_str())
+                        .unwrap_or("Не створена"),
+                );
+            });
+        } else {
+            metric_card(ui, "Режим", self.mode.title());
+            ui.add_space(6.0);
             metric_card(
-                &mut columns[1],
+                ui,
                 "Pairing",
                 if self.peer.is_some() {
                     "Підключено"
@@ -215,41 +263,36 @@ impl NikLpaApp {
                     "Не налаштовано"
                 },
             );
+            ui.add_space(6.0);
             metric_card(
-                &mut columns[2],
+                ui,
                 "Сесія",
                 self.session
                     .as_ref()
                     .map(|session| session.status.as_str())
                     .unwrap_or("Не створена"),
             );
-        });
+        }
 
-        ui.add_space(12.0);
+        ui.add_space(10.0);
         let mut next_page = None;
         card(ui, |ui| {
             ui.heading("Швидкий старт");
             match self.mode {
                 AppMode::CardAgent => {
-                    ui.label(
-                        "1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.",
-                    );
+                    ui.label("1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.");
                     if ui.button("Перейти до ручної передачі").clicked() {
                         next_page = Some(Page::Transfer);
                     }
                 }
                 AppMode::ServerAgent => {
-                    ui.label(
-                        "1. Спарте Card Agent. 2. Введіть activation code. 3. Запустіть Server Agent.",
-                    );
+                    ui.label("1. Спарте Card Agent. 2. Введіть activation code. 3. Запустіть Server Agent.");
                     if ui.button("Перейти до ручної передачі").clicked() {
                         next_page = Some(Page::Transfer);
                     }
                 }
                 AppMode::Local => {
-                    ui.label(
-                        "Підключіть рідер, оновіть список і виконайте звичайне встановлення профілю.",
-                    );
+                    ui.label("Підключіть рідер, оновіть список і виконайте звичайне встановлення профілю.");
                     if ui.button("Перейти до встановлення").clicked() {
                         next_page = Some(Page::Install);
                     }
@@ -264,11 +307,11 @@ impl NikLpaApp {
 
     fn render_profiles(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         let mut refresh = false;
         card(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading("Профілі eUICC");
                 refresh = ui
                     .add_enabled(
@@ -279,7 +322,7 @@ impl NikLpaApp {
             });
             ui.add(
                 egui::TextEdit::multiline(&mut self.profiles_output)
-                    .desired_rows(20)
+                    .desired_rows(16)
                     .desired_width(f32::INFINITY)
                     .font(egui::TextStyle::Monospace)
                     .interactive(false),
@@ -298,7 +341,7 @@ impl NikLpaApp {
 
     fn render_install(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         let mut install = false;
         card(ui, |ui| {
@@ -339,7 +382,7 @@ impl NikLpaApp {
 
     fn render_transfer(&mut self, ui: &mut egui::Ui) {
         self.render_pairing(ui);
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         match self.mode {
             AppMode::CardAgent => self.render_card_transfer(ui),
             AppMode::ServerAgent => self.render_server_transfer(ui),
@@ -354,31 +397,51 @@ impl NikLpaApp {
     fn render_pairing(&mut self, ui: &mut egui::Ui) {
         let mut pair_clicked = false;
         let mut own_code = self.identity.pairing_code();
+        let paired = self.peer.is_some();
+
         card(ui, |ui| {
-            ui.heading("Захищене pairing");
-            ui.label("Мій pairing code");
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut own_code)
-                        .desired_width(f32::INFINITY)
-                        .font(egui::TextStyle::Monospace)
-                        .interactive(false),
-                );
-                if ui.button("Копіювати").clicked() {
-                    ui.ctx().copy_text(own_code.clone());
+            ui.horizontal_wrapped(|ui| {
+                ui.heading("Захищене pairing");
+                if paired {
+                    ui.label("✓ Спарено");
+                } else {
+                    ui.label("○ Очікується pairing");
                 }
             });
+
+            ui.label("Мій pairing code");
+            ui.add(
+                egui::TextEdit::singleline(&mut own_code)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace)
+                    .interactive(false),
+            );
+            if ui.button("Копіювати мій pairing code").clicked() {
+                ui.ctx().copy_text(own_code.clone());
+            }
+
+            ui.add_space(6.0);
             ui.label("Pairing code іншої сторони");
-            ui.horizontal(|ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.peer_code_input)
-                        .desired_width(f32::INFINITY)
-                        .font(egui::TextStyle::Monospace),
-                );
-                pair_clicked = ui.button("Спарити").clicked();
-            });
+            ui.add(
+                egui::TextEdit::singleline(&mut self.peer_code_input)
+                    .desired_width(f32::INFINITY)
+                    .font(egui::TextStyle::Monospace),
+            );
+            pair_clicked = ui
+                .add_enabled(
+                    !self.peer_code_input.trim().is_empty(),
+                    egui::Button::new(if paired {
+                        "Переспарити"
+                    } else {
+                        "Спарити"
+                    }),
+                )
+                .clicked();
+
+            ui.small("Після успішного pairing кнопка запуску відповідного Agent стане активною.");
             ui.small("NIKRSP2 пакети приймаються лише від спареного X25519 peer.");
         });
+
         if pair_clicked {
             self.pair_peer();
         }
@@ -386,13 +449,13 @@ impl NikLpaApp {
 
     fn render_card_transfer(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         let mut start = false;
         let mut stop = false;
         card(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.heading("Card Agent сесія");
+            ui.heading("Card Agent сесія");
+            ui.horizontal_wrapped(|ui| {
                 start = ui
                     .add_enabled(
                         !self.busy && !self.relay_running && self.peer.is_some(),
@@ -402,10 +465,11 @@ impl NikLpaApp {
                 stop = ui
                     .add_enabled(self.relay_running, egui::Button::new("Зупинити"))
                     .clicked();
+                if self.peer.is_none() {
+                    ui.label("Спочатку виконайте pairing вище.");
+                }
             });
-            ui.label(
-                "Card Agent не виконує HTTP-запитів. Він лише працює з PC/SC та імпортованими пакетами.",
-            );
+            ui.label("Card Agent не виконує HTTP-запитів. Він лише працює з PC/SC та імпортованими пакетами.");
         });
         if start {
             self.start_card_session();
@@ -424,7 +488,7 @@ impl NikLpaApp {
             ui.label("Activation code");
             ui.add(
                 egui::TextEdit::multiline(&mut self.activation_code)
-                    .desired_rows(3)
+                    .desired_rows(2)
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
@@ -434,7 +498,7 @@ impl NikLpaApp {
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 start = ui
                     .add_enabled(
                         !self.busy && !self.relay_running && self.peer.is_some(),
@@ -444,6 +508,9 @@ impl NikLpaApp {
                 stop = ui
                     .add_enabled(self.relay_running, egui::Button::new("Зупинити"))
                     .clicked();
+                if self.peer.is_none() {
+                    ui.label("Спочатку виконайте pairing вище.");
+                }
             });
         });
         if start {
@@ -457,7 +524,7 @@ impl NikLpaApp {
 
     fn render_session_exchange(&mut self, ui: &mut egui::Ui) {
         self.render_timeline(ui);
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         if self.mode == AppMode::ServerAgent && self.session.is_none() && self.relay_running {
             let mut accept = false;
@@ -466,7 +533,7 @@ impl NikLpaApp {
                 ui.label("Вставте NIKRSP2 строку, створену Card Agent.");
                 ui.add(
                     egui::TextEdit::multiline(&mut self.server_bootstrap_input)
-                        .desired_rows(8)
+                        .desired_rows(6)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace),
                 );
@@ -501,12 +568,12 @@ impl NikLpaApp {
                 ui.label("Скопіюйте всю строку та перенесіть її в інше вікно NIK LPA.");
                 ui.add(
                     egui::TextEdit::multiline(&mut session.outgoing_text)
-                        .desired_rows(8)
+                        .desired_rows(6)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace)
                         .interactive(false),
                 );
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui
                         .add_enabled(
                             !session.outgoing_text.is_empty(),
@@ -521,7 +588,7 @@ impl NikLpaApp {
             });
         }
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         let busy = self.busy;
         let mut import = false;
         if let Some(session) = self.session.as_mut() {
@@ -535,7 +602,7 @@ impl NikLpaApp {
                 );
                 ui.add(
                     egui::TextEdit::multiline(&mut session.incoming_text)
-                        .desired_rows(8)
+                        .desired_rows(6)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace),
                 );
@@ -568,54 +635,64 @@ impl NikLpaApp {
 
         card(ui, |ui| {
             ui.heading("Послідовність RSP");
-            egui::Grid::new("rsp_timeline")
-                .num_columns(4)
-                .spacing([12.0, 8.0])
-                .striped(true)
+            egui::ScrollArea::horizontal()
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    ui.strong("Стан");
-                    ui.strong("Пакет");
-                    ui.strong("Напрямок");
-                    ui.strong("Дія");
-                    ui.end_row();
-                    for stage in RelayStage::ALL {
-                        ui.label(if completed_stages.contains(&stage) {
-                            "✓"
-                        } else {
-                            "○"
+                    egui::Grid::new("rsp_timeline")
+                        .num_columns(4)
+                        .spacing([10.0, 7.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.strong("Стан");
+                            ui.strong("Пакет");
+                            ui.strong("Напрямок");
+                            ui.strong("Дія");
+                            ui.end_row();
+                            for stage in RelayStage::ALL {
+                                ui.label(if completed_stages.contains(&stage) {
+                                    "✓"
+                                } else {
+                                    "○"
+                                });
+                                ui.label(stage.code());
+                                ui.monospace(stage.direction().arrow());
+                                ui.label(match mode {
+                                    AppMode::CardAgent => stage.offline_action_uk(),
+                                    AppMode::ServerAgent => stage.online_action_uk(),
+                                    _ => stage.label_uk(),
+                                });
+                                ui.end_row();
+                            }
                         });
-                        ui.label(stage.code());
-                        ui.monospace(stage.direction().arrow());
-                        ui.label(match mode {
-                            AppMode::CardAgent => stage.offline_action_uk(),
-                            AppMode::ServerAgent => stage.online_action_uk(),
-                            _ => stage.label_uk(),
-                        });
-                        ui.end_row();
-                    }
                 });
 
             if let Some(session) = self.session.as_ref() {
                 if !session.timeline.is_empty() {
                     ui.separator();
                     ui.strong("Audit подій");
-                    egui::Grid::new("rsp_audit_timeline")
-                        .num_columns(4)
-                        .spacing([12.0, 6.0])
-                        .striped(true)
+                    egui::ScrollArea::horizontal()
+                        .auto_shrink([false, true])
                         .show(ui, |ui| {
-                            ui.strong("Час UTC");
-                            ui.strong("Стадія");
-                            ui.strong("Розмір");
-                            ui.strong("Результат");
-                            ui.end_row();
-                            for event in &session.timeline {
-                                ui.monospace(event.timestamp.format("%H:%M:%S").to_string());
-                                ui.monospace(event.stage.code());
-                                ui.label(format!("{} байт", event.packet_size));
-                                ui.label(&event.note);
-                                ui.end_row();
-                            }
+                            egui::Grid::new("rsp_audit_timeline")
+                                .num_columns(4)
+                                .spacing([10.0, 6.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.strong("Час UTC");
+                                    ui.strong("Стадія");
+                                    ui.strong("Розмір");
+                                    ui.strong("Результат");
+                                    ui.end_row();
+                                    for event in &session.timeline {
+                                        ui.monospace(
+                                            event.timestamp.format("%H:%M:%S").to_string(),
+                                        );
+                                        ui.monospace(event.stage.code());
+                                        ui.label(format!("{} байт", event.packet_size));
+                                        ui.label(&event.note);
+                                        ui.end_row();
+                                    }
+                                });
                         });
                 }
 
@@ -626,9 +703,7 @@ impl NikLpaApp {
                     "Локальний deadline: {} UTC",
                     session.deadline.format("%Y-%m-%d %H:%M:%S")
                 ));
-                ui.small(
-                    "SM-DP+ може завершити свою транзакцію раніше за локальний anti-replay deadline.",
-                );
+                ui.small("SM-DP+ може завершити свою транзакцію раніше за локальний anti-replay deadline.");
             }
         });
     }
@@ -654,14 +729,14 @@ impl NikLpaApp {
     fn render_logs(&mut self, ui: &mut egui::Ui) {
         let mut clear = false;
         card(ui, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading("Журнал операцій");
                 clear = ui.button("Очистити").clicked();
             });
             let mut text = self.log.iter().cloned().collect::<Vec<_>>().join("\n");
             ui.add(
                 egui::TextEdit::multiline(&mut text)
-                    .desired_rows(28)
+                    .desired_rows(22)
                     .desired_width(f32::INFINITY)
                     .font(egui::TextStyle::Monospace)
                     .interactive(false),
@@ -685,13 +760,11 @@ impl NikLpaApp {
             theme::configure(ui.ctx(), self.dark_mode);
         }
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
         card(ui, |ui| {
             ui.heading("Безпека");
             ui.label("Пакети: NIKRSP2 / X25519 / HKDF-SHA256 / XChaCha20-Poly1305.");
-            ui.label(
-                "Activation code не записується в журнал; Card Agent отримує лише потрібні дані всередині ciphertext.",
-            );
+            ui.label("Activation code не записується в журнал; Card Agent отримує лише потрібні дані всередині ciphertext.");
         });
     }
 
@@ -700,29 +773,31 @@ impl NikLpaApp {
         let mut chip_info = false;
         card(ui, |ui| {
             ui.heading("PC/SC підключення");
-            ui.horizontal(|ui| {
-                if self.readers.is_empty() {
-                    ui.label(format!("Рідер #{}", self.selected_reader));
-                } else {
-                    egui::ComboBox::from_id_salt("production_pcsc_reader")
-                        .selected_text(
-                            self.readers
-                                .iter()
-                                .find(|reader| reader.index == self.selected_reader)
-                                .map(|reader| format!("{} — {}", reader.index, reader.name))
-                                .unwrap_or_else(|| format!("Рідер #{}", self.selected_reader)),
-                        )
-                        .width(480.0)
-                        .show_ui(ui, |ui| {
-                            for reader in &self.readers {
-                                ui.selectable_value(
-                                    &mut self.selected_reader,
-                                    reader.index,
-                                    format!("{} — {}", reader.index, reader.name),
-                                );
-                            }
-                        });
-                }
+
+            if self.readers.is_empty() {
+                ui.label(format!("Рідер #{}", self.selected_reader));
+            } else {
+                egui::ComboBox::from_id_salt("production_pcsc_reader")
+                    .selected_text(
+                        self.readers
+                            .iter()
+                            .find(|reader| reader.index == self.selected_reader)
+                            .map(|reader| format!("{} — {}", reader.index, reader.name))
+                            .unwrap_or_else(|| format!("Рідер #{}", self.selected_reader)),
+                    )
+                    .width((ui.available_width() - 8.0).clamp(220.0, 520.0))
+                    .show_ui(ui, |ui| {
+                        for reader in &self.readers {
+                            ui.selectable_value(
+                                &mut self.selected_reader,
+                                reader.index,
+                                format!("{} — {}", reader.index, reader.name),
+                            );
+                        }
+                    });
+            }
+
+            ui.horizontal_wrapped(|ui| {
                 discover = ui
                     .add_enabled(
                         !self.busy && !self.relay_running,
@@ -736,6 +811,7 @@ impl NikLpaApp {
                     )
                     .clicked();
             });
+
             if let Some(eid) = self.card_eid.as_deref() {
                 let redacted = if eid.len() > 10 {
                     format!("{}…{}", &eid[..6], &eid[eid.len() - 4..])
