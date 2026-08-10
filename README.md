@@ -29,6 +29,8 @@ Card Agent                      Server Agent
 
 The Card Agent never needs an HTTP network backend in relay mode. The Server Agent never needs access to the card reader. The same RSP transaction ID and message hash chain are kept across the full store-and-forward flow.
 
+For the full management flowchart, detailed Mermaid sequence, packet table, and operator walkthrough, see [NIK LPA staged RSP relay](docs/NIK-LPA-RSP-RELAY.md).
+
 ## Documentation
 
 - [Architecture](docs/NIK-LPA-ARCHITECTURE.md)
