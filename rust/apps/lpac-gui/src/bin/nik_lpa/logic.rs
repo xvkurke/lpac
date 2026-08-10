@@ -12,9 +12,7 @@ use zeroize::Zeroize;
 use crate::{
     app::{NikLpaApp, PendingRelay, PendingRelayAction},
     controller::{WorkerCommand, WorkerEvent},
-    model::{
-        AppMode, Page, RelaySession, TimelineEntry, decode_debug_packet, eid_hash,
-    },
+    model::{AppMode, Page, RelaySession, TimelineEntry, decode_debug_packet, eid_hash},
 };
 
 impl NikLpaApp {
