@@ -8,6 +8,8 @@ mod controller;
 mod logic;
 #[path = "nik_lpa/model.rs"]
 mod model;
+#[path = "nik_lpa/roboto_data.rs"]
+mod roboto_data;
 #[path = "nik_lpa/theme.rs"]
 mod theme;
 #[path = "nik_lpa/views.rs"]
