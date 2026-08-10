@@ -10,9 +10,13 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use uuid::Uuid;
 
 const STDERR_HISTORY_LIMIT: usize = 200;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RelayAgentRole {
@@ -105,6 +109,7 @@ impl RelayAgentProcess {
             .env("LPAC_APDU", apdu_driver)
             .env("LPAC_HTTP", http_driver);
         configure_runtime_environment(&executable, &mut command)?;
+        configure_hidden_child(&mut command);
 
         if role == RelayAgentRole::Card
             && let Some(index) = reader_index
@@ -314,6 +319,14 @@ fn configure_runtime_environment(executable: &Path, command: &mut Command) -> Re
 
     Ok(())
 }
+
+#[cfg(windows)]
+fn configure_hidden_child(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_child(_: &mut Command) {}
 
 fn validate_bundled_runtime(executable: &Path, role: RelayAgentRole) -> Result<()> {
     #[cfg(windows)]
