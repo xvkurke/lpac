@@ -204,8 +204,10 @@ impl NikLpaApp {
     fn handle_relay_stopped(&mut self) {
         self.relay_running = false;
         self.relay_role = None;
-        self.add_log("Relay Agent зупинено");
         if self.verify_after_relay_stop.is_some() {
+            self.add_log(
+                "PC/SC helper зупинено для незалежної Profile List перевірки; relay job залишається активним",
+            );
             self.send(
                 WorkerCommand::Profiles {
                     executable: PathBuf::from(&self.lpac_path),
@@ -213,6 +215,8 @@ impl NikLpaApp {
                 },
                 "Перевіряється встановлений ICCID через свіжий Profile List",
             );
+        } else {
+            self.add_log("Relay Agent зупинено");
         }
     }
 
@@ -270,7 +274,7 @@ impl NikLpaApp {
                 }
                 self.send(
                     WorkerCommand::StopRelay,
-                    "Закривається PC/SC relay-сеанс перед перевіркою",
+                    "Закривається PC/SC helper перед незалежною перевіркою",
                 );
             }
             PendingRelayAction::ServerInitiateAuthentication => {
@@ -335,9 +339,6 @@ impl NikLpaApp {
             .set_outgoing(&self.identity, &peer, &packet)
             .map_err(|error| error.to_string())?;
         session.status = format!("{} готовий до передачі", stage.code());
-        if stage == RelayStage::InstallResult {
-            session.completed = true;
-        }
         Ok(())
     }
 
@@ -521,6 +522,13 @@ impl NikLpaApp {
                 packet.payload,
                 PendingRelayAction::CardInstallBpp,
             ),
+            (AppMode::CardAgent, RelayStage::CompleteAck) => {
+                if let Some(session) = self.session.as_mut() {
+                    session.completed = true;
+                    session.status = "Server Agent підтвердив завершення relay job".into();
+                }
+                self.add_log("Relay download повністю завершено: отримано COMPLETE_ACK");
+            }
             (AppMode::ServerAgent, RelayStage::EuiccAuth) => {
                 let code = match ActivationCode::parse(self.activation_code.clone()) {
                     Ok(code) => code,
@@ -566,11 +574,31 @@ impl NikLpaApp {
                 );
             }
             (AppMode::ServerAgent, RelayStage::InstallResult) => {
-                if let Some(session) = self.session.as_mut() {
-                    session.completed = true;
-                    session.status = "Card Agent підтвердив встановлення та Profile List".into();
+                let iccid = packet
+                    .payload
+                    .get("iccid")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("unknown")
+                    .to_owned();
+                let ack_payload = json!({
+                    "status": "acknowledged",
+                    "iccid": iccid,
+                    "receivedAt": Utc::now().to_rfc3339(),
+                });
+                match self.create_and_encrypt_outgoing(RelayStage::CompleteAck, None, ack_payload) {
+                    Ok(()) => {
+                        if let Some(session) = self.session.as_mut() {
+                            session.completed = true;
+                            session.status =
+                                "INSTALL_RESULT прийнято; COMPLETE_ACK готовий до передачі".into();
+                        }
+                        self.add_log(
+                            "Server Agent підтвердив INSTALL_RESULT; створено фінальний COMPLETE_ACK",
+                        );
+                    }
+                    Err(error) => self.add_log(format!("ПОМИЛКА створення COMPLETE_ACK: {error}")),
                 }
-                self.add_log("Relay download завершено: отримано перевірений INSTALL_RESULT");
             }
             _ => self.add_log(format!(
                 "Неочікувана стадія для поточного режиму: {}",
@@ -618,10 +646,15 @@ impl NikLpaApp {
             return;
         }
         if let Some(session) = self.session.as_mut() {
-            session.status = format!("ICCID {expected} підтверджено свіжим Profile List");
-            session.completed = true;
+            session.status = format!(
+                "ICCID {expected} підтверджено; передайте INSTALL_RESULT на Server Agent і дочекайтесь COMPLETE_ACK"
+            );
+            session.completed = false;
         }
-        self.add_log(format!("ICCID {expected} успішно перевірено"));
+        self.page = Page::Transfer;
+        self.add_log(format!(
+            "ICCID {expected} перевірено; INSTALL_RESULT готовий до фінальної передачі"
+        ));
     }
 
     pub(crate) fn reset_mode(&mut self, mode: AppMode) {
