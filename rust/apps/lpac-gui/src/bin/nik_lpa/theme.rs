@@ -45,7 +45,8 @@ pub fn configure(context: &egui::Context, dark: bool) {
         visuals.widgets.inactive.bg_fill = DARK_CONTROL;
         visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, DARK_BORDER);
         visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(43, 73, 115);
-        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(95, 129, 167));
+        visuals.widgets.hovered.bg_stroke =
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(95, 129, 167));
         visuals.widgets.active.bg_fill = PRIMARY;
         visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, PRIMARY_HOVER);
         context.set_visuals_of(selected_theme, visuals);
