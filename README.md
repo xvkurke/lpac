@@ -29,27 +29,37 @@ Card Agent                      Server Agent
 
 The Card Agent never needs an HTTP network backend in relay mode. The Server Agent never needs access to the card reader. The same RSP transaction ID and message hash chain are kept across the full store-and-forward flow.
 
-For the full management flowchart, detailed Mermaid sequence, packet table, and operator walkthrough, see [NIK LPA staged RSP relay](docs/NIK-LPA-RSP-RELAY.md).
-
 ## Documentation
 
-- [Architecture](docs/NIK-LPA-ARCHITECTURE.md)
-- [RSP relay flow and end-to-end walkthrough](docs/NIK-LPA-RSP-RELAY.md)
-- [Windows application / developer notes](rust/README.md)
-- [Original lpac CLI usage](docs/USAGE.md)
-- [Original lpac developer notes](docs/DEVELOPERS.md)
+Start with the [NIK LPA documentation index](docs/README.md).
+
+Core documents:
+
+- [Repository guide](docs/NIK-LPA-REPOSITORY-GUIDE.md) — full repository map, ownership and runtime paths.
+- [Architecture](docs/NIK-LPA-ARCHITECTURE.md) — C/Rust boundaries and application architecture.
+- [Detailed RSP relay](docs/NIK-LPA-RSP-RELAY.md) — functions, inputs/outputs, source of every major field, certificate roles, ES9+/ES10b, APDU flow, BPP installation and validation.
+- [Glossary](docs/NIK-LPA-GLOSSARY.md) — protocol terms, variables, certificates and function naming.
+- [STM32/eUICC integration](docs/NIK-LPA-STM32-EUICC.md) — embedded Card Agent contract, APDU HAL, UICC contacts, direct/modem hardware topologies and required schematic information.
+- [Windows build pipeline](docs/NIK-LPA-WINDOWS-BUILD.md) — Windows-only product/CI policy.
+- [Windows Rust developer notes](rust/README.md).
+
+Retained upstream `lpac` documents in `docs/` remain useful for original CLI/developer context, but the NIK-specific documents above are authoritative for NIK product decisions.
 
 ## Build
 
-The Windows application is built in CI. The primary artifact is:
+NIK LPA product builds are Windows-only.
+
+Primary artifact:
 
 ```text
 nik-lpa-desktop-windows-x86_64
 ```
 
-The bundle contains `nik-lpa.exe`, the patched `lpac.exe`, PC/SC and WinHTTP transport drivers, and the required runtime libraries.
+The bundle contains `nik-lpa.exe`, the patched `lpac.exe`, PC/SC and WinHTTP transport drivers, and required runtime libraries.
 
-The Rust workspace can also be validated with:
+The legacy upstream multi-platform product matrix has been removed from NIK CI: Linux/Linux ARM/QMI, Windows ARM and macOS artifacts are no longer produced. Portable upstream source can remain where it does not interfere with the Windows product.
+
+The Rust workspace can be validated with:
 
 ```powershell
 cd rust
@@ -60,13 +70,17 @@ cargo test --workspace
 cargo build --release -p lpac-gui --bins
 ```
 
+See [Windows build and release pipeline](docs/NIK-LPA-WINDOWS-BUILD.md) for the complete CI/runtime bundle contract.
+
 ## UI
 
 NIK LPA uses the NIK desktop design system with bundled **Roboto** typography, responsive sidebar behavior, fixed content margins, reusable cards and controls, light/dark themes, and a sticky RSP progress view.
 
 ## Security note
 
-`NIKRSP-DEBUG1:` is a plaintext debugging transport. It can expose provisioning material such as certificates, signatures, Matching ID, confirmation data, and the Bound Profile Package. It is intended only for controlled engineering validation. Transport encryption can be restored after the staged workflow has been fully validated.
+`NIKRSP-DEBUG1:` is a plaintext debugging transport. It can expose provisioning material such as certificates, signatures, Matching ID, confirmation data, and the encoded Bound Profile Package. It is intended only for controlled engineering validation. Transport encryption can be restored after the staged workflow has been fully validated.
+
+This outer plaintext transport must not be confused with SGP.22 certificate/signature checks or the protected Bound Profile Package itself.
 
 ## License and upstream
 
