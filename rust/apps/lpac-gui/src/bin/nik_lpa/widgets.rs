@@ -9,8 +9,8 @@ pub fn card(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
             1.0,
             theme::border(ui.visuals().dark_mode),
         ))
-        .corner_radius(12.0)
-        .inner_margin(24.0)
+        .corner_radius(theme::CARD_RADIUS)
+        .inner_margin(theme::CARD_PADDING)
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             content(ui);
@@ -24,8 +24,8 @@ pub fn compact_card(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
             1.0,
             theme::border(ui.visuals().dark_mode),
         ))
-        .corner_radius(12.0)
-        .inner_margin(16.0)
+        .corner_radius(theme::CARD_RADIUS)
+        .inner_margin(theme::COMPACT_CARD_PADDING)
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             content(ui);
@@ -44,7 +44,7 @@ pub fn transfer_card(ui: &mut egui::Ui, outgoing: bool, content: impl FnOnce(&mu
             1.0,
             theme::border(ui.visuals().dark_mode),
         ))
-        .corner_radius(12.0)
+        .corner_radius(theme::CARD_RADIUS)
         .inner_margin(0.0)
         .show(ui, |ui| {
             let rect = ui.max_rect();
@@ -53,13 +53,12 @@ pub fn transfer_card(ui: &mut egui::Ui, outgoing: bool, content: impl FnOnce(&mu
                 2.0,
                 accent,
             );
-            ui.add_space(0.0);
             egui::Frame::new()
                 .inner_margin(egui::Margin {
-                    left: 21,
-                    right: 18,
-                    top: 18,
-                    bottom: 18,
+                    left: 24,
+                    right: 24,
+                    top: 20,
+                    bottom: 20,
                 })
                 .show(ui, |ui| {
                     ui.set_min_width(ui.available_width());
@@ -99,7 +98,7 @@ pub fn status_badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.12))
         .stroke(egui::Stroke::new(1.0, color.gamma_multiply(0.42)))
-        .corner_radius(8.0)
+        .corner_radius(theme::CONTROL_RADIUS)
         .inner_margin(egui::Margin::symmetric(8, 4))
         .show(ui, |ui| {
             ui.label(egui::RichText::new(text).size(12.0).strong().color(color));
@@ -116,8 +115,8 @@ pub fn primary_button(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Res
         )
         .fill(theme::PRIMARY)
         .stroke(egui::Stroke::new(1.0, theme::PRIMARY))
-        .corner_radius(8.0)
-        .min_size(egui::vec2(112.0, 44.0)),
+        .corner_radius(theme::CONTROL_RADIUS)
+        .min_size(egui::vec2(112.0, theme::CONTROL_HEIGHT)),
     )
 }
 
@@ -130,8 +129,8 @@ pub fn secondary_button(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::R
                 1.0,
                 theme::border(ui.visuals().dark_mode),
             ))
-            .corner_radius(8.0)
-            .min_size(egui::vec2(96.0, 44.0)),
+            .corner_radius(theme::CONTROL_RADIUS)
+            .min_size(egui::vec2(96.0, theme::CONTROL_HEIGHT)),
     )
 }
 
@@ -158,7 +157,7 @@ pub fn nav_item(
         )
         .fill(fill)
         .stroke(egui::Stroke::new(0.0, egui::Color32::TRANSPARENT))
-        .corner_radius(8.0)
+        .corner_radius(theme::CONTROL_RADIUS)
         .min_size(egui::vec2(ui.available_width(), 40.0)),
     );
 
@@ -208,7 +207,7 @@ pub fn timeline_step(
                 theme::border(ui.visuals().dark_mode)
             },
         ))
-        .corner_radius(8.0)
+        .corner_radius(theme::CONTROL_RADIUS)
         .inner_margin(egui::Margin::symmetric(10, 8))
         .show(ui, |ui| {
             ui.set_min_width((width - 20.0).max(96.0));
