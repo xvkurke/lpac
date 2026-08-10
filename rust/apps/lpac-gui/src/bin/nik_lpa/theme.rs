@@ -3,7 +3,6 @@ use eframe::egui;
 pub const ACCENT: egui::Color32 = egui::Color32::from_rgb(37, 99, 235);
 pub const SUCCESS: egui::Color32 = egui::Color32::from_rgb(34, 197, 94);
 pub const WARNING: egui::Color32 = egui::Color32::from_rgb(245, 158, 11);
-pub const ERROR: egui::Color32 = egui::Color32::from_rgb(239, 68, 68);
 pub const MUTED: egui::Color32 = egui::Color32::from_rgb(100, 116, 139);
 
 pub fn configure(context: &egui::Context, dark: bool) {
