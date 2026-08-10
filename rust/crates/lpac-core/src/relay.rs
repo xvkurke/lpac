@@ -20,10 +20,11 @@ pub enum RelayStage {
     EuiccPrepared,
     BoundProfilePackage,
     InstallResult,
+    CompleteAck,
 }
 
 impl RelayStage {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::InitRequest,
         Self::ServerAuth,
         Self::EuiccAuth,
@@ -31,6 +32,7 @@ impl RelayStage {
         Self::EuiccPrepared,
         Self::BoundProfilePackage,
         Self::InstallResult,
+        Self::CompleteAck,
     ];
 
     pub fn code(self) -> &'static str {
@@ -42,6 +44,7 @@ impl RelayStage {
             Self::EuiccPrepared => "EUICC_PREPARED",
             Self::BoundProfilePackage => "BOUND_PROFILE_PACKAGE",
             Self::InstallResult => "INSTALL_RESULT",
+            Self::CompleteAck => "COMPLETE_ACK",
         }
     }
 
@@ -54,6 +57,7 @@ impl RelayStage {
             Self::EuiccPrepared => "eUICC готова до пакета",
             Self::BoundProfilePackage => "Bound Profile Package",
             Self::InstallResult => "Результат встановлення",
+            Self::CompleteAck => "Підтвердження завершення сервером",
         }
     }
 
@@ -66,6 +70,7 @@ impl RelayStage {
             Self::EuiccPrepared => "Повернути euiccSigned2 + euiccOtpk",
             Self::BoundProfilePackage => "LoadBoundProfilePackage",
             Self::InstallResult => "ProfileList та перевірка ICCID",
+            Self::CompleteAck => "Прийняти фінальне підтвердження Server Agent",
         }
     }
 
@@ -77,7 +82,8 @@ impl RelayStage {
             Self::DownloadPrepare => "Повернути profileMetadata + smdpSigned2",
             Self::EuiccPrepared => "ES9+ GetBoundProfilePackage",
             Self::BoundProfilePackage => "Повернути зашифрований BPP",
-            Self::InstallResult => "Audit та відкладена notification",
+            Self::InstallResult => "Прийняти результат встановлення та audit",
+            Self::CompleteAck => "Повернути підтвердження завершення",
         }
     }
 
@@ -86,9 +92,10 @@ impl RelayStage {
             Self::InitRequest | Self::EuiccAuth | Self::EuiccPrepared | Self::InstallResult => {
                 RelayDirection::OfflineToOnline
             }
-            Self::ServerAuth | Self::DownloadPrepare | Self::BoundProfilePackage => {
-                RelayDirection::OnlineToOffline
-            }
+            Self::ServerAuth
+            | Self::DownloadPrepare
+            | Self::BoundProfilePackage
+            | Self::CompleteAck => RelayDirection::OnlineToOffline,
         }
     }
 
@@ -101,6 +108,7 @@ impl RelayStage {
             Self::EuiccPrepared => 5,
             Self::BoundProfilePackage => 6,
             Self::InstallResult => 7,
+            Self::CompleteAck => 8,
         }
     }
 
@@ -112,7 +120,8 @@ impl RelayStage {
             Self::DownloadPrepare => Some(Self::EuiccPrepared),
             Self::EuiccPrepared => Some(Self::BoundProfilePackage),
             Self::BoundProfilePackage => Some(Self::InstallResult),
-            Self::InstallResult => None,
+            Self::InstallResult => Some(Self::CompleteAck),
+            Self::CompleteAck => None,
         }
     }
 }
@@ -336,6 +345,10 @@ pub fn demo_relay_session(delay_seconds: i64) -> Result<Vec<RelayPacket>, CoreEr
             "iccid": "8901000000000000001",
             "notification": "pending"
         }),
+        json!({
+            "status": "acknowledged",
+            "iccid": "8901000000000000001"
+        }),
     ];
 
     let mut packets: Vec<RelayPacket> = Vec::with_capacity(RelayStage::ALL.len());
@@ -372,8 +385,8 @@ mod tests {
     fn one_minute_store_and_forward_chain_is_valid() {
         let packets = demo_relay_session(60).unwrap();
         validate_relay_chain(&packets).unwrap();
-        assert_eq!(packets.len(), 7);
-        assert_eq!(packets[1].transaction_id, packets[6].transaction_id);
+        assert_eq!(packets.len(), 8);
+        assert_eq!(packets[1].transaction_id, packets[7].transaction_id);
     }
 
     #[test]
