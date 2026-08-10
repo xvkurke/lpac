@@ -1,14 +1,17 @@
 use std::path::PathBuf;
 
 use eframe::egui;
-use lpac_core::relay::RelayStage;
+use lpac_core::relay::{RelayPacket, RelayStage};
 
 use crate::{
     app::NikLpaApp,
     controller::WorkerCommand,
     model::{AppMode, Page, decode_debug_packet, pretty_debug_packet},
     theme,
-    widgets::{card, metric_card, role_card, status_badge, timeline_step, transfer_card},
+    widgets::{
+        card, compact_card, key_value, metric_card, nav_item, primary_button, role_card,
+        secondary_button, status_badge, timeline_step, transfer_card,
+    },
 };
 
 impl NikLpaApp {
@@ -16,71 +19,64 @@ impl NikLpaApp {
         if self.mode == AppMode::Welcome {
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.set_min_width(ui.available_width());
-                    self.render_welcome(ui);
-                });
+                .show(ui, |ui| self.render_welcome(ui));
+            self.render_packet_windows(ui.ctx());
             return;
         }
 
         let available_height = ui.available_height();
+        let collapsed_sidebar = ui.available_width() < 1_120.0;
+        let sidebar_width = if collapsed_sidebar { 60.0 } else { 260.0 };
+
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            let sidebar_width = if ui.available_width() < 1_050.0 {
-                176.0
-            } else {
-                196.0
-            };
-
             ui.allocate_ui_with_layout(
                 egui::vec2(sidebar_width, available_height),
                 egui::Layout::top_down(egui::Align::Min),
-                |ui| self.render_sidebar(ui),
+                |ui| self.render_sidebar(ui, collapsed_sidebar),
             );
-            ui.separator();
 
-            let content_size = ui.available_size();
+            let workspace_size = ui.available_size();
             ui.allocate_ui_with_layout(
-                content_size,
+                workspace_size,
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        ui.add_space(14.0);
-                        ui.vertical(|ui| {
-                            let width = (ui.available_width() - 14.0).max(320.0);
-                            ui.set_width(width);
-                            self.render_header(ui);
+                    self.render_topbar(ui);
 
-                            if self.page == Page::Transfer {
-                                self.render_timeline_sticky(ui);
-                                ui.add_space(8.0);
-                                egui::ScrollArea::vertical()
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(width);
-                                        self.render_transfer(ui);
-                                        ui.add_space(18.0);
-                                    });
-                            } else {
-                                egui::ScrollArea::vertical()
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        ui.set_min_width(width);
-                                        match self.page {
-                                            Page::Dashboard => self.render_dashboard(ui),
-                                            Page::Profiles => self.render_profiles(ui),
-                                            Page::Install => self.render_install(ui),
-                                            Page::Sessions => self.render_sessions(ui),
-                                            Page::Logs => self.render_logs(ui),
-                                            Page::Settings => self.render_settings(ui),
-                                            Page::Transfer => {}
-                                        }
-                                        ui.add_space(18.0);
-                                    });
-                            }
+                    if self.page == Page::Transfer {
+                        self.content_rail(ui, |app, ui| {
+                            ui.add_space(16.0);
+                            app.render_timeline_sticky(ui);
+                            ui.add_space(16.0);
                         });
-                    });
+
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                self.content_rail(ui, |app, ui| {
+                                    app.render_transfer(ui);
+                                    ui.add_space(40.0);
+                                });
+                            });
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                self.content_rail(ui, |app, ui| {
+                                    ui.add_space(32.0);
+                                    match app.page {
+                                        Page::Dashboard => app.render_dashboard(ui),
+                                        Page::Profiles => app.render_profiles(ui),
+                                        Page::Install => app.render_install(ui),
+                                        Page::Sessions => app.render_sessions(ui),
+                                        Page::Logs => app.render_logs(ui),
+                                        Page::Settings => app.render_settings(ui),
+                                        Page::Transfer => {}
+                                    }
+                                    ui.add_space(40.0);
+                                });
+                            });
+                    }
                 },
             );
         });
@@ -88,94 +84,183 @@ impl NikLpaApp {
         self.render_packet_windows(ui.ctx());
     }
 
-    fn render_welcome(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(42.0);
-        ui.vertical_centered(|ui| {
-            ui.heading("NIK LPA");
-            ui.small("eUICC / RSP engineering utility");
-        });
-        ui.add_space(24.0);
+    fn content_rail(
+        &mut self,
+        ui: &mut egui::Ui,
+        content: impl FnOnce(&mut Self, &mut egui::Ui),
+    ) {
+        let available = ui.available_width();
+        let gutter = if available < 900.0 { 16.0 } else { 24.0 };
+        let rail_width = (available - gutter * 2.0).clamp(320.0, 830.0);
+        let side_space = ((available - rail_width) / 2.0).max(0.0);
 
+        ui.horizontal(|ui| {
+            ui.add_space(side_space);
+            ui.allocate_ui_with_layout(
+                egui::vec2(rail_width, ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_width(rail_width);
+                    content(self, ui);
+                },
+            );
+        });
+    }
+
+    fn render_welcome(&mut self, ui: &mut egui::Ui) {
+        let available = ui.available_width();
+        let rail_width = (available - 48.0).clamp(320.0, 830.0);
+        let side_space = ((available - rail_width) / 2.0).max(0.0);
         let mut selected = None;
-        if ui.available_width() >= 900.0 {
-            ui.columns(3, |columns| {
-                if role_card(&mut columns[0], "Local LPA", "PC/SC + SM-DP+", "Відкрити") {
-                    selected = Some(AppMode::Local);
-                }
-                if role_card(&mut columns[1], "Card Agent", "PC/SC / eUICC", "Відкрити") {
-                    selected = Some(AppMode::CardAgent);
-                }
-                if role_card(&mut columns[2], "Server Agent", "SM-DP+ / ES9+", "Відкрити") {
-                    selected = Some(AppMode::ServerAgent);
+
+        ui.horizontal(|ui| {
+            ui.add_space(side_space);
+            ui.vertical(|ui| {
+                ui.set_width(rail_width);
+                ui.add_space(64.0);
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("NIK")
+                            .size(28.0)
+                            .strong()
+                            .color(theme::BRAND_RED),
+                    );
+                    ui.label(egui::RichText::new("LPA").size(28.0).strong());
+                });
+                ui.label(
+                    egui::RichText::new("eUICC engineering utility")
+                        .size(14.0)
+                        .color(theme::muted_text(ui.visuals().dark_mode)),
+                );
+                ui.add_space(32.0);
+
+                if rail_width >= 760.0 {
+                    ui.columns(3, |columns| {
+                        if role_card(&mut columns[0], "Local LPA", "PC/SC + SM-DP+", "Відкрити") {
+                            selected = Some(AppMode::Local);
+                        }
+                        if role_card(&mut columns[1], "Card Agent", "PC/SC / eUICC", "Відкрити") {
+                            selected = Some(AppMode::CardAgent);
+                        }
+                        if role_card(&mut columns[2], "Server Agent", "SM-DP+ / ES9+", "Відкрити") {
+                            selected = Some(AppMode::ServerAgent);
+                        }
+                    });
+                } else {
+                    for (mode, title, subtitle) in [
+                        (AppMode::Local, "Local LPA", "PC/SC + SM-DP+"),
+                        (AppMode::CardAgent, "Card Agent", "PC/SC / eUICC"),
+                        (AppMode::ServerAgent, "Server Agent", "SM-DP+ / ES9+"),
+                    ] {
+                        if role_card(ui, title, subtitle, "Відкрити") {
+                            selected = Some(mode);
+                        }
+                        ui.add_space(16.0);
+                    }
                 }
             });
-        } else {
-            for (mode, title, subtitle) in [
-                (AppMode::Local, "Local LPA", "PC/SC + SM-DP+"),
-                (AppMode::CardAgent, "Card Agent", "PC/SC / eUICC"),
-                (AppMode::ServerAgent, "Server Agent", "SM-DP+ / ES9+"),
-            ] {
-                if role_card(ui, title, subtitle, "Відкрити") {
-                    selected = Some(mode);
-                }
-                ui.add_space(8.0);
-            }
-        }
+        });
 
         if let Some(mode) = selected {
             self.reset_mode(mode);
         }
     }
 
-    fn render_sidebar(&mut self, ui: &mut egui::Ui) {
+    fn render_sidebar(&mut self, ui: &mut egui::Ui, collapsed: bool) {
         let mut change_mode = false;
-        let sidebar_size = ui.available_size();
-
+        let size = ui.available_size();
         egui::Frame::new()
             .fill(theme::sidebar(self.dark_mode))
-            .inner_margin(12.0)
+            .stroke(egui::Stroke::new(1.0, theme::border(self.dark_mode)))
+            .inner_margin(if collapsed { 10.0 } else { 12.0 })
             .show(ui, |ui| {
-                ui.set_min_size(sidebar_size - egui::vec2(24.0, 24.0));
-                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                    ui.heading("NIK LPA");
-                    ui.small(self.mode.title());
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ui.add_space(5.0);
+                ui.set_min_size(size - egui::vec2(if collapsed { 20.0 } else { 24.0 }, 24.0));
 
-                    for page in Page::ALL {
-                        let allowed = !matches!(
-                            (self.mode, page),
-                            (AppMode::ServerAgent, Page::Profiles | Page::Install)
+                if collapsed {
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("N")
+                                .size(22.0)
+                                .strong()
+                                .color(theme::BRAND_RED),
                         );
-                        if ui
-                            .add_enabled(
-                                allowed,
-                                egui::Button::new(page.label())
-                                    .selected(self.page == page)
-                                    .min_size(egui::vec2(ui.available_width(), 31.0)),
-                            )
-                            .clicked()
-                        {
-                            self.page = page;
-                        }
-                    }
-
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                        change_mode = ui
-                            .add_sized(
-                                [ui.available_width(), 31.0],
-                                egui::Button::new("Змінити режим"),
-                            )
-                            .clicked();
-                        ui.add_space(5.0);
-                        ui.small(if self.relay_running {
-                            "● Relay active"
-                        } else {
-                            "○ Relay stopped"
-                        });
-                        ui.small("DEBUG / PLAINTEXT");
                     });
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("NIK")
+                                .size(20.0)
+                                .strong()
+                                .color(theme::BRAND_RED),
+                        );
+                        ui.label(egui::RichText::new("LPA").size(20.0).strong());
+                    });
+                    ui.label(
+                        egui::RichText::new(self.mode.title())
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                    );
+                }
+
+                ui.add_space(16.0);
+                for page in Page::ALL {
+                    let allowed = !matches!(
+                        (self.mode, page),
+                        (AppMode::ServerAgent, Page::Profiles | Page::Install)
+                    );
+                    let compact = page_compact_label(page);
+                    if nav_item(
+                        ui,
+                        page.label(),
+                        compact,
+                        self.page == page,
+                        allowed,
+                        collapsed,
+                    )
+                    .clicked()
+                    {
+                        self.page = page;
+                    }
+                    ui.add_space(4.0);
+                }
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    change_mode = ui
+                        .add_sized(
+                            [ui.available_width(), 40.0],
+                            egui::Button::new(if collapsed { "M" } else { "Змінити режим" })
+                                .corner_radius(8.0),
+                        )
+                        .on_hover_text("Змінити режим")
+                        .clicked();
+                    ui.add_space(8.0);
+                    if collapsed {
+                        ui.vertical_centered(|ui| {
+                            ui.colored_label(
+                                if self.relay_running {
+                                    theme::SUCCESS
+                                } else {
+                                    theme::muted_text(ui.visuals().dark_mode)
+                                },
+                                "●",
+                            );
+                        });
+                    } else {
+                        ui.label(
+                            egui::RichText::new(if self.relay_running {
+                                "● Relay active"
+                            } else {
+                                "○ Relay stopped"
+                            })
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                        );
+                        ui.label(
+                            egui::RichText::new("PLAINTEXT DEBUG")
+                                .size(11.0)
+                                .color(theme::WARNING),
+                        );
+                    }
                 });
             });
 
@@ -184,109 +269,123 @@ impl NikLpaApp {
         }
     }
 
-    fn render_header(&mut self, ui: &mut egui::Ui) {
+    fn render_topbar(&mut self, ui: &mut egui::Ui) {
         let mut toggle_theme = false;
-        ui.horizontal_wrapped(|ui| {
-            ui.vertical(|ui| {
-                ui.heading(self.page.label());
-                ui.small(self.mode.description());
+        egui::Frame::new()
+            .fill(theme::topbar(self.dark_mode))
+            .stroke(egui::Stroke::new(1.0, theme::border(self.dark_mode)))
+            .inner_margin(egui::Margin::symmetric(24, 12))
+            .show(ui, |ui| {
+                ui.set_min_height(44.0);
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(self.page.label()).size(20.0).strong());
+                        ui.label(
+                            egui::RichText::new(self.mode.title())
+                                .size(12.0)
+                                .color(theme::muted_text(ui.visuals().dark_mode)),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        toggle_theme = secondary_button(
+                            ui,
+                            if self.dark_mode { "Світла" } else { "Темна" },
+                            true,
+                        )
+                        .clicked();
+                        if self.page == Page::Transfer {
+                            status_badge(ui, "PLAINTEXT DEBUG", theme::WARNING);
+                        }
+                        if self.busy {
+                            ui.spinner();
+                        }
+                    });
+                });
             });
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                toggle_theme = ui
-                    .button(if self.dark_mode { "Light" } else { "Dark" })
-                    .clicked();
-                if self.page == Page::Transfer {
-                    status_badge(ui, "PLAINTEXT DEBUG", theme::WARNING);
-                }
-                if self.busy {
-                    ui.spinner();
-                }
-            });
-        });
+
         if toggle_theme {
             self.dark_mode = !self.dark_mode;
             theme::configure(ui.ctx(), self.dark_mode);
         }
-        ui.add_space(8.0);
     }
 
     fn render_dashboard(&mut self, ui: &mut egui::Ui) {
         if matches!(self.mode, AppMode::CardAgent | AppMode::Local) {
             self.render_reader_selector(ui);
-            ui.add_space(8.0);
+            ui.add_space(24.0);
         }
 
-        if ui.available_width() >= 760.0 {
+        if ui.available_width() >= 680.0 {
             ui.columns(3, |columns| {
                 metric_card(&mut columns[0], "Режим", self.mode.title());
                 metric_card(&mut columns[1], "Transport", "Plaintext debug");
                 metric_card(
                     &mut columns[2],
                     "Relay",
-                    if self.relay_running {
-                        "Active"
-                    } else {
-                        "Stopped"
-                    },
+                    if self.relay_running { "Active" } else { "Stopped" },
                 );
             });
         } else {
             metric_card(ui, "Режим", self.mode.title());
-            ui.add_space(6.0);
+            ui.add_space(12.0);
             metric_card(ui, "Transport", "Plaintext debug");
-            ui.add_space(6.0);
+            ui.add_space(12.0);
             metric_card(
                 ui,
                 "Relay",
-                if self.relay_running {
-                    "Active"
-                } else {
-                    "Stopped"
-                },
+                if self.relay_running { "Active" } else { "Stopped" },
             );
         }
 
-        ui.add_space(8.0);
+        ui.add_space(24.0);
         card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong(
-                    self.session
-                        .as_ref()
-                        .map(|session| session.status.as_str())
-                        .unwrap_or("Relay session: idle"),
-                );
-                if matches!(self.mode, AppMode::CardAgent | AppMode::ServerAgent)
-                    && ui.button("Відкрити RSP Relay").clicked()
-                {
+            ui.label(egui::RichText::new("Поточний стан").size(16.0).strong());
+            ui.add_space(8.0);
+            ui.label(
+                self.session
+                    .as_ref()
+                    .map(|session| session.status.as_str())
+                    .unwrap_or("Relay session: idle"),
+            );
+            if matches!(self.mode, AppMode::CardAgent | AppMode::ServerAgent) {
+                ui.add_space(16.0);
+                if primary_button(ui, "Відкрити RSP Relay", true).clicked() {
                     self.page = Page::Transfer;
                 }
-            });
+            }
         });
     }
 
     fn render_profiles(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(8.0);
+        ui.add_space(24.0);
 
         let mut refresh = false;
         card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("Profile List");
-                refresh = ui
-                    .add_enabled(
-                        !self.busy && !self.relay_running,
-                        egui::Button::new("Оновити"),
-                    )
-                    .clicked();
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Profile List").size(16.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    refresh = secondary_button(ui, "Оновити", !self.busy && !self.relay_running)
+                        .clicked();
+                });
             });
-            ui.add(
-                egui::TextEdit::multiline(&mut self.profiles_output)
-                    .desired_rows(18)
-                    .desired_width(f32::INFINITY)
-                    .font(egui::TextStyle::Monospace)
-                    .interactive(false),
-            );
+            ui.add_space(16.0);
+            if self.profiles_output.is_empty() {
+                ui.label(
+                    egui::RichText::new("Профілі не завантажені")
+                        .color(theme::muted_text(ui.visuals().dark_mode)),
+                );
+            } else {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.profiles_output)
+                        .desired_rows(16)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace)
+                        .interactive(false),
+                );
+            }
         });
+
         if refresh {
             self.send(
                 WorkerCommand::Profiles {
@@ -300,31 +399,35 @@ impl NikLpaApp {
 
     fn render_install(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(8.0);
+        ui.add_space(24.0);
 
         let mut install = false;
         card(ui, |ui| {
-            ui.strong("Local install");
-            ui.label("Activation code");
+            ui.label(egui::RichText::new("Встановити профіль").size(16.0).strong());
+            ui.add_space(16.0);
+            field_label(ui, "Activation code");
             ui.add(
                 egui::TextEdit::multiline(&mut self.local_activation_code)
                     .desired_rows(2)
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
-            ui.label("Confirmation code");
+            ui.add_space(12.0);
+            field_label(ui, "Confirmation code");
             ui.add(
                 egui::TextEdit::singleline(&mut self.local_confirmation_code)
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
-            install = ui
-                .add_enabled(
-                    !self.busy && !self.relay_running,
-                    egui::Button::new("Встановити"),
-                )
-                .clicked();
+            ui.add_space(20.0);
+            install = primary_button(
+                ui,
+                "Встановити",
+                !self.busy && !self.relay_running && !self.local_activation_code.trim().is_empty(),
+            )
+            .clicked();
         });
+
         if install {
             self.send(
                 WorkerCommand::LocalDownload {
@@ -344,7 +447,7 @@ impl NikLpaApp {
             AppMode::CardAgent => self.render_card_transfer(ui),
             AppMode::ServerAgent => self.render_server_transfer(ui),
             AppMode::Local => card(ui, |ui| {
-                ui.strong("Relay unavailable in Local mode");
+                ui.label("Relay недоступний у Local mode");
             }),
             AppMode::Welcome => {}
         }
@@ -352,24 +455,25 @@ impl NikLpaApp {
 
     fn render_card_transfer(&mut self, ui: &mut egui::Ui) {
         self.render_reader_selector(ui);
-        ui.add_space(8.0);
+        ui.add_space(24.0);
 
         let mut start = false;
         let mut stop = false;
         card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("Card Agent");
-                start = ui
-                    .add_enabled(
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Card Agent").size(16.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    stop = secondary_button(ui, "Зупинити", self.relay_running).clicked();
+                    start = primary_button(
+                        ui,
+                        "Нова сесія",
                         !self.busy && !self.relay_running,
-                        egui::Button::new("Нова сесія"),
                     )
                     .clicked();
-                stop = ui
-                    .add_enabled(self.relay_running, egui::Button::new("Зупинити"))
-                    .clicked();
+                });
             });
         });
+
         if start {
             self.start_card_session();
         }
@@ -383,32 +487,36 @@ impl NikLpaApp {
         let mut start = false;
         let mut stop = false;
         card(ui, |ui| {
-            ui.strong("Server Agent");
-            ui.label("Activation code");
+            ui.label(egui::RichText::new("Server Agent").size(16.0).strong());
+            ui.add_space(16.0);
+            field_label(ui, "Activation code");
             ui.add(
                 egui::TextEdit::multiline(&mut self.activation_code)
                     .desired_rows(2)
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
-            ui.label("Confirmation code");
+            ui.add_space(12.0);
+            field_label(ui, "Confirmation code");
             ui.add(
                 egui::TextEdit::singleline(&mut self.confirmation_code)
                     .desired_width(f32::INFINITY)
                     .password(true),
             );
+            ui.add_space(20.0);
             ui.horizontal_wrapped(|ui| {
-                start = ui
-                    .add_enabled(
-                        !self.busy && !self.relay_running,
-                        egui::Button::new("Запустити"),
-                    )
-                    .clicked();
-                stop = ui
-                    .add_enabled(self.relay_running, egui::Button::new("Зупинити"))
-                    .clicked();
+                start = primary_button(
+                    ui,
+                    "Запустити",
+                    !self.busy
+                        && !self.relay_running
+                        && !self.activation_code.trim().is_empty(),
+                )
+                .clicked();
+                stop = secondary_button(ui, "Зупинити", self.relay_running).clicked();
             });
         });
+
         if start {
             self.start_server_session();
         }
@@ -419,36 +527,40 @@ impl NikLpaApp {
     }
 
     fn render_session_exchange(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(8.0);
+        ui.add_space(24.0);
 
         if self.mode == AppMode::ServerAgent && self.session.is_none() && self.relay_running {
             let mut accept = false;
             let mut open_full = false;
             transfer_card(ui, false, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong("ОТРИМАТИ ← Card Agent");
-                    status_badge(ui, "INIT_REQUEST", theme::WARNING);
-                });
+                transfer_header(ui, "ОТРИМАТИ", "Card Agent", "INIT_REQUEST", false);
+                ui.add_space(12.0);
                 ui.add(
                     egui::TextEdit::multiline(&mut self.server_bootstrap_input)
+                        .hint_text("Вставте NIKRSP-DEBUG1 пакет")
                         .desired_rows(3)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace),
                 );
+                ui.add_space(12.0);
                 ui.horizontal_wrapped(|ui| {
-                    accept = ui
-                        .add_enabled(
-                            !self.busy && !self.server_bootstrap_input.trim().is_empty(),
-                            egui::Button::new("Прийняти INIT_REQUEST"),
-                        )
-                        .clicked();
-                    open_full = ui
-                        .add_enabled(
-                            !self.server_bootstrap_input.is_empty(),
-                            egui::Button::new("Відкрити повністю"),
-                        )
-                        .clicked();
-                    ui.small(format!("{} байт", self.server_bootstrap_input.len()));
+                    accept = primary_button(
+                        ui,
+                        "Прийняти",
+                        !self.busy && !self.server_bootstrap_input.trim().is_empty(),
+                    )
+                    .clicked();
+                    open_full = secondary_button(
+                        ui,
+                        "Відкрити повністю",
+                        !self.server_bootstrap_input.is_empty(),
+                    )
+                    .clicked();
+                    ui.label(
+                        egui::RichText::new(format!("{} B", self.server_bootstrap_input.len()))
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                    );
                 });
             });
             if open_full {
@@ -461,6 +573,12 @@ impl NikLpaApp {
         }
 
         if self.session.is_none() {
+            compact_card(ui, |ui| {
+                ui.label(
+                    egui::RichText::new("Сесія не запущена")
+                        .color(theme::muted_text(ui.visuals().dark_mode)),
+                );
+            });
             return;
         }
 
@@ -478,24 +596,28 @@ impl NikLpaApp {
                 .ok()
                 .map(|packet| packet.stage.code())
                 .unwrap_or("PACKET");
+            let mut preview = packet_preview(&session.outgoing_text);
             transfer_card(ui, true, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong(format!("НАДІСЛАТИ → {peer_label}"));
-                    status_badge(ui, stage, theme::ACCENT);
-                });
+                transfer_header(ui, "НАДІСЛАТИ", peer_label, stage, true);
+                ui.add_space(12.0);
                 ui.add(
-                    egui::TextEdit::multiline(&mut session.outgoing_text)
+                    egui::TextEdit::multiline(&mut preview)
                         .desired_rows(3)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace)
                         .interactive(false),
                 );
+                ui.add_space(12.0);
                 ui.horizontal_wrapped(|ui| {
-                    if ui.button("Копіювати").clicked() {
+                    if primary_button(ui, "Копіювати", true).clicked() {
                         ui.ctx().copy_text(session.outgoing_text.clone());
                     }
-                    open_outgoing = ui.button("Відкрити повністю").clicked();
-                    ui.small(format!("{} байт", session.outgoing_text.len()));
+                    open_outgoing = secondary_button(ui, "Відкрити повністю", true).clicked();
+                    ui.label(
+                        egui::RichText::new(format!("{} B", session.outgoing_text.len()))
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                    );
                 });
             });
         }
@@ -503,39 +625,47 @@ impl NikLpaApp {
             self.show_outgoing_packet = true;
         }
 
-        ui.add_space(8.0);
+        ui.add_space(16.0);
         let busy = self.busy;
         let mut import = false;
         let mut open_incoming = false;
         if let Some(session) = self.session.as_mut() {
             let expected = session.expected_incoming();
             transfer_card(ui, false, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong(format!("ОТРИМАТИ ← {peer_label}"));
-                    if let Some(stage) = expected {
-                        status_badge(ui, stage.code(), theme::WARNING);
-                    }
-                });
+                transfer_header(
+                    ui,
+                    "ОТРИМАТИ",
+                    peer_label,
+                    expected.map(RelayStage::code).unwrap_or("—"),
+                    false,
+                );
+                ui.add_space(12.0);
                 ui.add(
                     egui::TextEdit::multiline(&mut session.incoming_text)
+                        .hint_text("Вставте пакет з іншого Agent")
                         .desired_rows(3)
                         .desired_width(f32::INFINITY)
                         .font(egui::TextStyle::Monospace),
                 );
+                ui.add_space(12.0);
                 ui.horizontal_wrapped(|ui| {
-                    import = ui
-                        .add_enabled(
-                            !busy && expected.is_some() && !session.incoming_text.trim().is_empty(),
-                            egui::Button::new("Прийняти та виконати"),
-                        )
-                        .clicked();
-                    open_incoming = ui
-                        .add_enabled(
-                            !session.incoming_text.is_empty(),
-                            egui::Button::new("Відкрити повністю"),
-                        )
-                        .clicked();
-                    ui.small(format!("{} байт", session.incoming_text.len()));
+                    import = primary_button(
+                        ui,
+                        "Прийняти та виконати",
+                        !busy && expected.is_some() && !session.incoming_text.trim().is_empty(),
+                    )
+                    .clicked();
+                    open_incoming = secondary_button(
+                        ui,
+                        "Відкрити повністю",
+                        !session.incoming_text.is_empty(),
+                    )
+                    .clicked();
+                    ui.label(
+                        egui::RichText::new(format!("{} B", session.incoming_text.len()))
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                    );
                 });
             });
         }
@@ -566,91 +696,90 @@ impl NikLpaApp {
             .and_then(|packet| packet.stage.next())
             .or((self.session.is_none()).then_some(RelayStage::InitRequest));
 
-        card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("RSP FLOW");
-                if let Some(session) = self.session.as_ref() {
-                    ui.small(session.status.as_str());
-                }
+        compact_card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("RSP FLOW").size(14.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("{}/8", completed.len().min(8)))
+                            .monospace()
+                            .size(12.0)
+                            .color(theme::muted_text(ui.visuals().dark_mode)),
+                    );
+                });
             });
-            egui::ScrollArea::horizontal()
-                .auto_shrink([false, true])
+            ui.add_space(12.0);
+
+            let columns = if ui.available_width() >= 560.0 { 4 } else { 2 };
+            let gap = 8.0;
+            let cell_width =
+                (ui.available_width() - gap * (columns.saturating_sub(1) as f32)) / columns as f32;
+            egui::Grid::new("rsp_flow_grid")
+                .num_columns(columns)
+                .spacing([gap, 8.0])
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        for (index, stage) in RelayStage::ALL.into_iter().enumerate() {
-                            timeline_step(
-                                ui,
-                                index + 1,
-                                stage.code(),
-                                completed.contains(&stage),
-                                active == Some(stage),
-                            );
-                            if index + 1 < RelayStage::ALL.len() {
-                                ui.monospace("→");
-                            }
+                    for (index, stage) in RelayStage::ALL.into_iter().enumerate() {
+                        timeline_step(
+                            ui,
+                            index + 1,
+                            stage.code(),
+                            completed.contains(&stage),
+                            active == Some(stage),
+                            cell_width,
+                        );
+                        if (index + 1) % columns == 0 {
+                            ui.end_row();
                         }
-                    });
+                    }
                 });
         });
     }
 
     fn render_sessions(&mut self, ui: &mut egui::Ui) {
         card(ui, |ui| {
-            ui.strong("Current session");
+            ui.label(egui::RichText::new("Поточна сесія").size(16.0).strong());
+            ui.add_space(16.0);
             if let Some(session) = self.session.as_ref() {
-                egui::Grid::new("session_summary")
-                    .num_columns(2)
-                    .spacing([18.0, 6.0])
-                    .show(ui, |ui| {
-                        ui.small("Job ID");
-                        ui.monospace(session.job_id.to_string());
-                        ui.end_row();
-                        ui.small("Side");
-                        ui.label(format!("{:?}", session.side));
-                        ui.end_row();
-                        ui.small("Packets");
-                        ui.label(session.packets.len().to_string());
-                        ui.end_row();
-                        ui.small("Status");
-                        ui.label(&session.status);
-                        ui.end_row();
-                        ui.small("Completed");
-                        ui.label(if session.completed { "yes" } else { "no" });
-                        ui.end_row();
-                    });
+                key_value(ui, "Job ID", &session.job_id.to_string());
+                key_value(ui, "Side", &format!("{:?}", session.side));
+                key_value(ui, "Packets", &session.packets.len().to_string());
+                key_value(ui, "Completed", if session.completed { "yes" } else { "no" });
+                ui.add_space(12.0);
+                ui.label(&session.status);
             } else {
-                ui.label("Idle");
+                ui.label(
+                    egui::RichText::new("Idle")
+                        .color(theme::muted_text(ui.visuals().dark_mode)),
+                );
             }
         });
 
         if let Some(session) = self.session.as_ref()
             && !session.timeline.is_empty()
         {
-            ui.add_space(8.0);
+            ui.add_space(24.0);
             card(ui, |ui| {
-                ui.strong("Audit");
-                egui::ScrollArea::horizontal()
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        egui::Grid::new("rsp_audit")
-                            .num_columns(4)
-                            .spacing([14.0, 6.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                ui.strong("UTC");
-                                ui.strong("Stage");
-                                ui.strong("Size");
-                                ui.strong("Result");
-                                ui.end_row();
-                                for event in &session.timeline {
-                                    ui.monospace(event.timestamp.format("%H:%M:%S").to_string());
-                                    ui.monospace(event.stage.code());
-                                    ui.label(format!("{} B", event.packet_size));
-                                    ui.label(&event.note);
-                                    ui.end_row();
-                                }
+                ui.label(egui::RichText::new("Audit").size(16.0).strong());
+                ui.add_space(16.0);
+                for event in &session.timeline {
+                    egui::Frame::new()
+                        .fill(theme::control_fill(ui.visuals().dark_mode))
+                        .corner_radius(8.0)
+                        .inner_margin(12.0)
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.monospace(event.timestamp.format("%H:%M:%S").to_string());
+                                status_badge(ui, event.stage.code(), theme::PRIMARY);
+                                ui.label(format!("{} B", event.packet_size));
                             });
-                    });
+                            ui.label(
+                                egui::RichText::new(&event.note)
+                                    .size(12.0)
+                                    .color(theme::muted_text(ui.visuals().dark_mode)),
+                            );
+                        });
+                    ui.add_space(8.0);
+                }
             });
         }
     }
@@ -658,10 +787,13 @@ impl NikLpaApp {
     fn render_logs(&mut self, ui: &mut egui::Ui) {
         let mut clear = false;
         card(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.strong("Runtime log");
-                clear = ui.button("Очистити").clicked();
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("Журнал операцій").size(16.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    clear = secondary_button(ui, "Очистити", !self.log.is_empty()).clicked();
+                });
             });
+            ui.add_space(16.0);
             let mut text = self.log.iter().cloned().collect::<Vec<_>>().join("\n");
             ui.add(
                 egui::TextEdit::multiline(&mut text)
@@ -677,22 +809,35 @@ impl NikLpaApp {
     }
 
     fn render_settings(&mut self, ui: &mut egui::Ui) {
-        let mut apply_theme = false;
         card(ui, |ui| {
-            ui.strong("Runtime");
-            ui.label("lpac");
+            ui.label(egui::RichText::new("Runtime").size(16.0).strong());
+            ui.add_space(16.0);
+            field_label(ui, "lpac executable");
             ui.add(egui::TextEdit::singleline(&mut self.lpac_path).desired_width(f32::INFINITY));
-            ui.checkbox(&mut self.dark_mode, "Dark theme");
-            apply_theme = ui.button("Застосувати").clicked();
         });
-        if apply_theme {
-            theme::configure(ui.ctx(), self.dark_mode);
-        }
 
-        ui.add_space(8.0);
+        ui.add_space(24.0);
         card(ui, |ui| {
+            ui.label(egui::RichText::new("Вигляд").size(16.0).strong());
+            ui.add_space(16.0);
             ui.horizontal_wrapped(|ui| {
-                ui.strong("Relay transport");
+                let light = secondary_button(ui, "Світла", !self.dark_mode).clicked();
+                let dark = secondary_button(ui, "Темна", self.dark_mode).clicked();
+                if light {
+                    self.dark_mode = false;
+                    theme::configure(ui.ctx(), false);
+                }
+                if dark {
+                    self.dark_mode = true;
+                    theme::configure(ui.ctx(), true);
+                }
+            });
+        });
+
+        ui.add_space(24.0);
+        compact_card(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Relay transport");
                 status_badge(ui, "PLAINTEXT DEBUG", theme::WARNING);
             });
         });
@@ -702,51 +847,68 @@ impl NikLpaApp {
         let mut discover = false;
         let mut chip_info = false;
         card(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new("PC/SC").size(16.0).strong());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    status_badge(
+                        ui,
+                        if self.card_eid.is_some() { "eUICC READY" } else { "READER" },
+                        if self.card_eid.is_some() {
+                            theme::SUCCESS
+                        } else {
+                            theme::muted_text(ui.visuals().dark_mode)
+                        },
+                    );
+                });
+            });
+            ui.add_space(16.0);
+            field_label(ui, "Reader");
+            if self.readers.is_empty() {
+                ui.add_enabled(
+                    false,
+                    egui::TextEdit::singleline(&mut format!("Reader #{}", self.selected_reader))
+                        .desired_width(f32::INFINITY),
+                );
+            } else {
+                egui::ComboBox::from_id_salt("production_pcsc_reader")
+                    .selected_text(
+                        self.readers
+                            .iter()
+                            .find(|reader| reader.index == self.selected_reader)
+                            .map(|reader| format!("{} — {}", reader.index, reader.name))
+                            .unwrap_or_else(|| format!("Reader #{}", self.selected_reader)),
+                    )
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for reader in &self.readers {
+                            ui.selectable_value(
+                                &mut self.selected_reader,
+                                reader.index,
+                                format!("{} — {}", reader.index, reader.name),
+                            );
+                        }
+                    });
+            }
+            ui.add_space(16.0);
             ui.horizontal_wrapped(|ui| {
-                ui.strong("PC/SC");
-                if self.readers.is_empty() {
-                    ui.label(format!("Reader #{}", self.selected_reader));
-                } else {
-                    egui::ComboBox::from_id_salt("production_pcsc_reader")
-                        .selected_text(
-                            self.readers
-                                .iter()
-                                .find(|reader| reader.index == self.selected_reader)
-                                .map(|reader| format!("{} — {}", reader.index, reader.name))
-                                .unwrap_or_else(|| format!("Reader #{}", self.selected_reader)),
-                        )
-                        .width((ui.available_width() * 0.55).clamp(220.0, 520.0))
-                        .show_ui(ui, |ui| {
-                            for reader in &self.readers {
-                                ui.selectable_value(
-                                    &mut self.selected_reader,
-                                    reader.index,
-                                    format!("{} — {}", reader.index, reader.name),
-                                );
-                            }
-                        });
-                }
-                discover = ui
-                    .add_enabled(
-                        !self.busy && !self.relay_running,
-                        egui::Button::new("Refresh"),
-                    )
+                discover = secondary_button(ui, "Оновити", !self.busy && !self.relay_running)
                     .clicked();
-                chip_info = ui
-                    .add_enabled(
-                        !self.busy && !self.relay_running,
-                        egui::Button::new("eUICC info"),
-                    )
-                    .clicked();
+                chip_info = secondary_button(
+                    ui,
+                    "Інформація eUICC",
+                    !self.busy && !self.relay_running,
+                )
+                .clicked();
             });
 
             if let Some(eid) = self.card_eid.as_deref() {
+                ui.add_space(12.0);
                 let redacted = if eid.len() > 10 {
                     format!("{}…{}", &eid[..6], &eid[eid.len() - 4..])
                 } else {
                     eid.to_owned()
                 };
-                ui.monospace(format!("EID {redacted}"));
+                key_value(ui, "EID", &redacted);
             }
         });
 
@@ -778,21 +940,22 @@ impl NikLpaApp {
                 .unwrap_or_default();
             let mut pretty = pretty_debug_packet(&raw);
             let mut open = self.show_outgoing_packet;
-            egui::Window::new("OUTGOING PACKET")
+            egui::Window::new("Вихідний пакет")
                 .open(&mut open)
-                .default_size([860.0, 620.0])
+                .default_size([760.0, 560.0])
                 .resizable(true)
                 .show(context, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         status_badge(ui, "PLAINTEXT", theme::WARNING);
-                        if ui.button("Copy raw").clicked() {
+                        if primary_button(ui, "Copy raw", true).clicked() {
                             ui.ctx().copy_text(raw.clone());
                         }
-                        ui.label(format!("{} байт", raw.len()));
+                        ui.label(format!("{} B", raw.len()));
                     });
+                    ui.add_space(12.0);
                     ui.add(
                         egui::TextEdit::multiline(&mut pretty)
-                            .desired_rows(32)
+                            .desired_rows(28)
                             .desired_width(f32::INFINITY)
                             .font(egui::TextStyle::Monospace)
                             .interactive(false),
@@ -809,18 +972,19 @@ impl NikLpaApp {
                 .unwrap_or_default();
             let mut pretty = pretty_debug_packet(&raw);
             let mut open = self.show_incoming_packet;
-            egui::Window::new("INCOMING PACKET")
+            egui::Window::new("Вхідний пакет")
                 .open(&mut open)
-                .default_size([860.0, 620.0])
+                .default_size([760.0, 560.0])
                 .resizable(true)
                 .show(context, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         status_badge(ui, "PLAINTEXT", theme::WARNING);
-                        ui.label(format!("{} байт", raw.len()));
+                        ui.label(format!("{} B", raw.len()));
                     });
+                    ui.add_space(12.0);
                     ui.add(
                         egui::TextEdit::multiline(&mut pretty)
-                            .desired_rows(32)
+                            .desired_rows(28)
                             .desired_width(f32::INFINITY)
                             .font(egui::TextStyle::Monospace)
                             .interactive(false),
@@ -835,16 +999,17 @@ impl NikLpaApp {
             let mut open = self.show_bootstrap_packet;
             egui::Window::new("INIT_REQUEST")
                 .open(&mut open)
-                .default_size([860.0, 620.0])
+                .default_size([760.0, 560.0])
                 .resizable(true)
                 .show(context, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         status_badge(ui, "PLAINTEXT", theme::WARNING);
-                        ui.label(format!("{} байт", raw.len()));
+                        ui.label(format!("{} B", raw.len()));
                     });
+                    ui.add_space(12.0);
                     ui.add(
                         egui::TextEdit::multiline(&mut pretty)
-                            .desired_rows(32)
+                            .desired_rows(28)
                             .desired_width(f32::INFINITY)
                             .font(egui::TextStyle::Monospace)
                             .interactive(false),
@@ -853,4 +1018,91 @@ impl NikLpaApp {
             self.show_bootstrap_packet = open;
         }
     }
+}
+
+fn page_compact_label(page: Page) -> &'static str {
+    match page {
+        Page::Dashboard => "OV",
+        Page::Profiles => "PR",
+        Page::Install => "IN",
+        Page::Transfer => "RSP",
+        Page::Sessions => "SE",
+        Page::Logs => "LG",
+        Page::Settings => "ST",
+    }
+}
+
+fn field_label(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        egui::RichText::new(text)
+            .size(12.0)
+            .strong()
+            .color(theme::muted_text(ui.visuals().dark_mode)),
+    );
+    ui.add_space(4.0);
+}
+
+fn transfer_header(ui: &mut egui::Ui, action: &str, peer: &str, stage: &str, outgoing: bool) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            egui::RichText::new(if outgoing {
+                format!("{action}  →  {peer}")
+            } else {
+                format!("{action}  ←  {peer}")
+            })
+            .size(16.0)
+            .strong(),
+        );
+        status_badge(
+            ui,
+            stage,
+            if outgoing {
+                theme::PRIMARY
+            } else {
+                theme::WARNING
+            },
+        );
+    });
+}
+
+fn packet_preview(raw: &str) -> String {
+    match decode_debug_packet(raw) {
+        Ok(packet) => packet_summary(&packet),
+        Err(_) => truncate_middle(raw, 300),
+    }
+}
+
+fn packet_summary(packet: &RelayPacket) -> String {
+    let transaction = packet
+        .transaction_id
+        .as_deref()
+        .map(|value| truncate_middle(value, 68))
+        .unwrap_or_else(|| "—".into());
+    let payload_keys = packet
+        .payload
+        .as_object()
+        .map(|object| object.keys().cloned().collect::<Vec<_>>().join(", "))
+        .unwrap_or_else(|| "value".into());
+    format!(
+        "stage={}   sequence={}   job={}\ntransaction={}\npayload keys: {}",
+        packet.stage.code(),
+        packet.sequence,
+        packet.job_id,
+        transaction,
+        payload_keys
+    )
+}
+
+fn truncate_middle(value: &str, max_chars: usize) -> String {
+    let chars = value.chars().collect::<Vec<_>>();
+    if chars.len() <= max_chars {
+        return value.to_owned();
+    }
+    let left = max_chars * 2 / 3;
+    let right = max_chars - left;
+    format!(
+        "{}…{}",
+        chars[..left].iter().collect::<String>(),
+        chars[chars.len() - right..].iter().collect::<String>()
+    )
 }
