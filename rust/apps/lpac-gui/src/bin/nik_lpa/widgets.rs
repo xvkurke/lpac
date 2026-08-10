@@ -17,11 +17,7 @@ pub fn card(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
         });
 }
 
-pub fn transfer_card(
-    ui: &mut egui::Ui,
-    outgoing: bool,
-    content: impl FnOnce(&mut egui::Ui),
-) {
+pub fn transfer_card(ui: &mut egui::Ui, outgoing: bool, content: impl FnOnce(&mut egui::Ui)) {
     let stroke = if outgoing {
         theme::ACCENT
     } else {
@@ -67,13 +63,7 @@ pub fn status_badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
         });
 }
 
-pub fn timeline_step(
-    ui: &mut egui::Ui,
-    number: usize,
-    label: &str,
-    completed: bool,
-    active: bool,
-) {
+pub fn timeline_step(ui: &mut egui::Ui, number: usize, label: &str, completed: bool, active: bool) {
     let color = if completed {
         theme::SUCCESS
     } else if active {
