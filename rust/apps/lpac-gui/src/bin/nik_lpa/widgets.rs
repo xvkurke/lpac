@@ -40,7 +40,10 @@ pub fn transfer_card(ui: &mut egui::Ui, outgoing: bool, content: impl FnOnce(&mu
     };
     egui::Frame::new()
         .fill(theme::card_fill(ui.visuals().dark_mode))
-        .stroke(egui::Stroke::new(1.0, theme::border(ui.visuals().dark_mode)))
+        .stroke(egui::Stroke::new(
+            1.0,
+            theme::border(ui.visuals().dark_mode),
+        ))
         .corner_radius(12.0)
         .inner_margin(0.0)
         .show(ui, |ui| {
@@ -106,11 +109,15 @@ pub fn status_badge(ui: &mut egui::Ui, text: &str, color: egui::Color32) {
 pub fn primary_button(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Response {
     ui.add_enabled(
         enabled,
-        egui::Button::new(egui::RichText::new(text).color(egui::Color32::WHITE).strong())
-            .fill(theme::PRIMARY)
-            .stroke(egui::Stroke::new(1.0, theme::PRIMARY))
-            .corner_radius(8.0)
-            .min_size(egui::vec2(112.0, 44.0)),
+        egui::Button::new(
+            egui::RichText::new(text)
+                .color(egui::Color32::WHITE)
+                .strong(),
+        )
+        .fill(theme::PRIMARY)
+        .stroke(egui::Stroke::new(1.0, theme::PRIMARY))
+        .corner_radius(8.0)
+        .min_size(egui::vec2(112.0, 44.0)),
     )
 }
 
