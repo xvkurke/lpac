@@ -8,7 +8,6 @@
 #include <euicc/tostr.h>
 #include <lpac/utils.h>
 
-#include <ctype.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -20,6 +19,8 @@
 static const char *opt_string = "s:m:i:c:a:ph?";
 
 static volatile int cancelled = 0;
+
+#define SECRET_STDIN_MAX 16384
 
 #define CANCELPOINT() \
     if (cancelled) {  \
@@ -41,12 +42,59 @@ char *strsep(char **stringp, const char *__delim) {
 }
 #endif
 
-static bool is_strict_matching_id(const char *token) {
+static void secure_clear(void *data, size_t length) {
+    volatile unsigned char *cursor = data;
+    while (length-- > 0) {
+        *cursor++ = 0;
+    }
+}
+
+static int read_secret_line(char **value, size_t *value_length) {
+    char buffer[SECRET_STDIN_MAX + 2];
+    int fret = -1;
+
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+        goto exit;
+    }
+
+    size_t length = strlen(buffer);
+    bool has_newline = length > 0 && buffer[length - 1] == '\n';
+    if (!has_newline && !feof(stdin)) {
+        int c;
+        while ((c = fgetc(stdin)) != '\n' && c != EOF) {
+        }
+        goto exit;
+    }
+
+    if (has_newline) {
+        buffer[--length] = '\0';
+    }
+    if (length > 0 && buffer[length - 1] == '\r') {
+        buffer[--length] = '\0';
+    }
+    if (length == 0 || length > SECRET_STDIN_MAX) {
+        goto exit;
+    }
+
+    *value = malloc(length + 1);
+    if (*value == NULL) {
+        goto exit;
+    }
+    memcpy(*value, buffer, length + 1);
+    *value_length = length;
+    fret = 0;
+
+exit:
+    secure_clear(buffer, sizeof(buffer));
+    return fret;
+}
+
+static bool is_valid_matching_id(const char *token) {
     const size_t n = strlen(token);
     for (size_t i = 0; i < n; i++) {
-        if (isalnum(token[i]) || token[i] == '-')
-            continue;
-        return false;
+        const unsigned char character = (unsigned char)token[i];
+        if (character < 0x21 || character > 0x7e || character == '$')
+            return false;
     }
     return true;
 }
@@ -102,6 +150,9 @@ static int applet_main(int argc, char **argv) {
     char *matchingId = NULL;
     char *imei = NULL;
     char *confirmation_code = NULL;
+    size_t confirmation_code_length = 0;
+    char *activation_code_storage = NULL;
+    size_t activation_code_storage_length = 0;
     char *activation_code = NULL;
     int interactive_preview = 0;
 
@@ -124,10 +175,43 @@ static int applet_main(int argc, char **argv) {
             imei = strdup(optarg);
             break;
         case 'c':
-            confirmation_code = strdup(optarg);
+            if (strcmp(optarg, "-") == 0) {
+                if (read_secret_line(&confirmation_code, &confirmation_code_length)) {
+                    error_function_name = "confirmation_code";
+                    error_detail = strdup("failed to read from stdin");
+                    fret = -1;
+                    goto input_err;
+                }
+            } else {
+                confirmation_code = strdup(optarg);
+                if (confirmation_code == NULL) {
+                    error_function_name = "confirmation_code";
+                    error_detail = strdup("allocation failed");
+                    fret = -1;
+                    goto input_err;
+                }
+                confirmation_code_length = strlen(confirmation_code);
+            }
             break;
         case 'a':
-            activation_code = strdup(optarg);
+            if (strcmp(optarg, "-") == 0) {
+                if (read_secret_line(&activation_code_storage, &activation_code_storage_length)) {
+                    error_function_name = "activation_code";
+                    error_detail = strdup("failed to read from stdin");
+                    fret = -1;
+                    goto input_err;
+                }
+            } else {
+                activation_code_storage = strdup(optarg);
+                if (activation_code_storage == NULL) {
+                    error_function_name = "activation_code";
+                    error_detail = strdup("allocation failed");
+                    fret = -1;
+                    goto input_err;
+                }
+                activation_code_storage_length = strlen(activation_code_storage);
+            }
+            activation_code = activation_code_storage;
             if (strncasecmp(activation_code, "LPA:", 4) == 0)
                 activation_code += 4; // ignore uri scheme
             break;
@@ -140,11 +224,12 @@ static int applet_main(int argc, char **argv) {
             printf("\t -s SM-DP+ Domain\n");
             printf("\t -m Matching ID\n");
             printf("\t -i IMEI\n");
-            printf("\t -c Confirmation Code (Password)\n");
-            printf("\t -a Activation Code (e.g: 'LPA:***')\n");
+            printf("\t -c Confirmation Code (Password, or '-' to read one line from stdin)\n");
+            printf("\t -a Activation Code (e.g: 'LPA:***', or '-' to read one line from stdin)\n");
             printf("\t -p Interactive preview profile\n");
             printf("\t -h This help info\n");
-            return -1;
+            fret = -1;
+            goto exit;
         default:
             break;
         }
@@ -156,11 +241,12 @@ static int applet_main(int argc, char **argv) {
 
         const char *token = NULL;
         int index = 0;
+        char *activation_code_cursor = activation_code;
 
-        while ((token = strsep(&activation_code, "$")) != NULL) {
+        while ((token = strsep(&activation_code_cursor, "$")) != NULL) {
             switch (index) {
             case 0: // Activation Code Format
-                if (strncmp(token, "1", strlen(token)) != 0) {
+                if (strcmp(token, "1") != 0) {
                     error_function_name = "activation_code";
                     error_detail = strdup("invalid");
                     goto err;
@@ -171,9 +257,9 @@ static int applet_main(int argc, char **argv) {
                 break;
             case 2: // AC_Token or Matching ID
                 matchingId = strdup(token);
-                if (!is_strict_matching_id(matchingId)) {
+                if (!is_valid_matching_id(matchingId)) {
                     error_function_name = "matching_id";
-                    error_detail = strdup("invalid format, contains character not alphanumeric or dash");
+                    error_detail = strdup("invalid format, contains whitespace or non-printable character");
                     goto err;
                 }
                 break;
@@ -181,7 +267,7 @@ static int applet_main(int argc, char **argv) {
                 // ignored; this function is not implemented
                 break;
             case 4: // Confirmation Code Required Flag
-                if (strncmp(token, "1", strlen(token)) == 0 && confirmation_code == NULL) {
+                if (strcmp(token, "1") == 0 && confirmation_code == NULL) {
                     error_function_name = "confirmation_code";
                     error_detail = strdup("required");
                     goto err;
@@ -322,6 +408,10 @@ static int applet_main(int argc, char **argv) {
     fret = 0;
     goto exit;
 
+input_err:
+    jprint_error(error_function_name, error_detail);
+    goto exit;
+
 err:
     fret = -1;
     jprint_progress("es10b_cancel_session", smdp);
@@ -334,6 +424,14 @@ err:
         jprint_error("cancelled", NULL);
     }
 exit:
+    if (activation_code_storage != NULL) {
+        secure_clear(activation_code_storage, activation_code_storage_length);
+        free(activation_code_storage);
+    }
+    if (confirmation_code != NULL) {
+        secure_clear(confirmation_code, confirmation_code_length);
+        free(confirmation_code);
+    }
     euicc_http_cleanup(&euicc_ctx);
     return fret;
 }

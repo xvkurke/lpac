@@ -4,6 +4,7 @@
 #include "applet/chip.h"
 #include "applet/notification.h"
 #include "applet/profile.h"
+#include "applet/relay.h"
 #include "applet/version.h"
 
 #include <errno.h>
@@ -64,7 +65,7 @@ struct applet_entry driver_applet = {
 };
 
 static const struct applet_entry *applets[] = {
-    &driver_applet, &applet_chip, &applet_profile, &applet_notification, &applet_version, NULL,
+    &driver_applet, &applet_chip, &applet_profile, &applet_notification, &applet_relay, &applet_version, NULL,
 };
 
 static int euicc_ctx_inited = 0;
@@ -89,7 +90,7 @@ static bool setup_es10x_mss(uint8_t *mss) {
 
     const long value = getenv_or_default(ENV_ES10X_MSS, (long)0);
     if (value == 0)
-        return true; // use default
+        return true;
     if (errno == ERANGE || value < ES10X_MSS_MIN_VALUE || value > ES10X_MSS_MAX_VALUE)
         return false;
 
@@ -147,18 +148,15 @@ void main_fini_euicc(void) {
 bool check_windows_version() {
     DWORDLONG dwlConditionMask = 0;
 
-    OSVERSIONINFOEX osvi = {
-        .dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX),
-        .dwMajorVersion = 10,
-        .dwMinorVersion = 0,
-        .dwBuildNumber = 18362 // Windows 10 1903
-    };
+    OSVERSIONINFOEX osvi = {.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX),
+                            .dwMajorVersion = 10,
+                            .dwMinorVersion = 0,
+                            .dwBuildNumber = 18362};
 
     VER_SET_CONDITION(dwlConditionMask, VER_MAJORVERSION, VER_GREATER_EQUAL);
     VER_SET_CONDITION(dwlConditionMask, VER_MINORVERSION, VER_GREATER_EQUAL);
     VER_SET_CONDITION(dwlConditionMask, VER_BUILDNUMBER, VER_GREATER_EQUAL);
 
-    // Only work when manifest embedded correctly.
     return VerifyVersionInfo(&osvi, VER_MAJORVERSION | VER_MINORVERSION | VER_BUILDNUMBER, dwlConditionMask);
 }
 
@@ -191,7 +189,6 @@ int main(int argc, char **argv) {
     memset(&euicc_ctx, 0, sizeof(euicc_ctx));
 
     const char *apdu_driver = getenv(ENV_APDU_DRIVER);
-
     const char *http_driver = getenv(ENV_HTTP_DRIVER);
 
     if (euicc_driver_init(apdu_driver, http_driver)) {
@@ -219,7 +216,7 @@ int main(int argc, char **argv) {
     ret = applet_entry(argc, argv, applets);
 
     main_fini_euicc();
-
+    euicc_http_cleanup(&euicc_ctx);
     euicc_driver_fini();
 
     return ret;

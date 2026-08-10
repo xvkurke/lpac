@@ -9,18 +9,19 @@
 #include <time.h>
 #include <unistd.h>
 
-#if defined(_WIN32)
-static char *strndup(const char *s, size_t n) {
-    size_t len = strnlen(s, n);
-    char *new = (char *)malloc(len + 1);
+static char *lpac_strndup(const char *s, size_t n) {
+    size_t len = 0;
+    while (len < n && s[len] != '\0')
+        len++;
 
+    char *new = malloc(len + 1);
     if (new == NULL)
         return NULL;
 
+    memcpy(new, s, len);
     new[len] = '\0';
-    return (char *)memcpy(new, s, len);
+    return new;
 }
-#endif
 
 const char *getenv_str_or_default(const char *name, const char *default_value) {
     const char *value = getenv(name);
@@ -134,7 +135,7 @@ char *remove_suffix(char *restrict str, const char *restrict suffix) {
     }
     size_t pos = str_len - suffix_len;
     if (strcmp(str + pos, suffix) == 0) {
-        return strndup(str, pos);
+        return lpac_strndup(str, pos);
     } else {
         return NULL;
     }
