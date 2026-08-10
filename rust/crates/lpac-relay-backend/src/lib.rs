@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     collections::VecDeque,
     env,
@@ -10,8 +12,6 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use uuid::Uuid;
 
 const STDERR_HISTORY_LIMIT: usize = 200;
