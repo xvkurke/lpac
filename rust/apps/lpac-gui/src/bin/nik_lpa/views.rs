@@ -223,7 +223,11 @@ impl NikLpaApp {
                 metric_card(
                     &mut columns[2],
                     "Relay",
-                    if self.relay_running { "Active" } else { "Stopped" },
+                    if self.relay_running {
+                        "Active"
+                    } else {
+                        "Stopped"
+                    },
                 );
             });
         } else {
@@ -234,7 +238,11 @@ impl NikLpaApp {
             metric_card(
                 ui,
                 "Relay",
-                if self.relay_running { "Active" } else { "Stopped" },
+                if self.relay_running {
+                    "Active"
+                } else {
+                    "Stopped"
+                },
             );
         }
 
@@ -415,6 +423,7 @@ impl NikLpaApp {
 
         if self.mode == AppMode::ServerAgent && self.session.is_none() && self.relay_running {
             let mut accept = false;
+            let mut open_full = false;
             transfer_card(ui, false, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.strong("ОТРИМАТИ ← Card Agent");
@@ -433,18 +442,18 @@ impl NikLpaApp {
                             egui::Button::new("Прийняти INIT_REQUEST"),
                         )
                         .clicked();
-                    if ui
+                    open_full = ui
                         .add_enabled(
                             !self.server_bootstrap_input.is_empty(),
                             egui::Button::new("Відкрити повністю"),
                         )
-                        .clicked()
-                    {
-                        self.show_bootstrap_packet = true;
-                    }
+                        .clicked();
                     ui.small(format!("{} байт", self.server_bootstrap_input.len()));
                 });
             });
+            if open_full {
+                self.show_bootstrap_packet = true;
+            }
             if accept {
                 self.accept_server_bootstrap();
             }
@@ -461,6 +470,7 @@ impl NikLpaApp {
             .map(|session| session.side.peer_label())
             .unwrap_or("Peer");
 
+        let mut open_outgoing = false;
         if let Some(session) = self.session.as_mut()
             && !session.outgoing_text.is_empty()
         {
@@ -484,17 +494,19 @@ impl NikLpaApp {
                     if ui.button("Копіювати").clicked() {
                         ui.ctx().copy_text(session.outgoing_text.clone());
                     }
-                    if ui.button("Відкрити повністю").clicked() {
-                        self.show_outgoing_packet = true;
-                    }
+                    open_outgoing = ui.button("Відкрити повністю").clicked();
                     ui.small(format!("{} байт", session.outgoing_text.len()));
                 });
             });
+        }
+        if open_outgoing {
+            self.show_outgoing_packet = true;
         }
 
         ui.add_space(8.0);
         let busy = self.busy;
         let mut import = false;
+        let mut open_incoming = false;
         if let Some(session) = self.session.as_mut() {
             let expected = session.expected_incoming();
             transfer_card(ui, false, |ui| {
@@ -517,18 +529,18 @@ impl NikLpaApp {
                             egui::Button::new("Прийняти та виконати"),
                         )
                         .clicked();
-                    if ui
+                    open_incoming = ui
                         .add_enabled(
                             !session.incoming_text.is_empty(),
                             egui::Button::new("Відкрити повністю"),
                         )
-                        .clicked()
-                    {
-                        self.show_incoming_packet = true;
-                    }
+                        .clicked();
                     ui.small(format!("{} байт", session.incoming_text.len()));
                 });
             });
+        }
+        if open_incoming {
+            self.show_incoming_packet = true;
         }
         if import {
             self.import_session_incoming();
