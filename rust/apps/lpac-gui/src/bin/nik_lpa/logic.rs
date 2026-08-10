@@ -3,11 +3,7 @@ use std::path::PathBuf;
 use chrono::Utc;
 use eframe::egui;
 use lpac_backend::{LpacRun, PcscReader};
-use lpac_core::{
-    ActivationCode,
-    relay::{RelayPacket, RelayStage},
-    secure_relay::PeerIdentity,
-};
+use lpac_core::{ActivationCode, relay::RelayStage};
 use lpac_relay_backend::RelayAgentRole;
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -16,7 +12,9 @@ use zeroize::Zeroize;
 use crate::{
     app::{NikLpaApp, PendingRelay, PendingRelayAction},
     controller::{WorkerCommand, WorkerEvent},
-    model::{AppMode, Page, RelaySession, TimelineEntry, eid_hash},
+    model::{
+        AppMode, Page, RelaySession, TimelineEntry, decode_debug_packet, eid_hash,
+    },
 };
 
 impl NikLpaApp {
@@ -160,10 +158,8 @@ impl NikLpaApp {
                 self.relay_running = true;
                 self.relay_role = Some(role);
                 self.add_log(match role {
-                    RelayAgentRole::Card => {
-                        "Card Agent запущено; PC/SC-сеанс утримується відкритим"
-                    }
-                    RelayAgentRole::Server => "Server Agent запущено; WinHTTP готовий до SM-DP+",
+                    RelayAgentRole::Card => "Card Agent запущено",
+                    RelayAgentRole::Server => "Server Agent запущено",
                 });
                 if role == RelayAgentRole::Card {
                     self.relay_request("card.init", json!({}), PendingRelayAction::CardInit);
@@ -205,15 +201,13 @@ impl NikLpaApp {
         self.relay_running = false;
         self.relay_role = None;
         if self.verify_after_relay_stop.is_some() {
-            self.add_log(
-                "PC/SC helper зупинено для незалежної Profile List перевірки; relay job залишається активним",
-            );
+            self.add_log("PC/SC helper зупинено; виконується Profile List");
             self.send(
                 WorkerCommand::Profiles {
                     executable: PathBuf::from(&self.lpac_path),
                     reader_index: self.selected_reader,
                 },
-                "Перевіряється встановлений ICCID через свіжий Profile List",
+                "Перевіряється встановлений ICCID",
             );
         } else {
             self.add_log("Relay Agent зупинено");
@@ -225,8 +219,6 @@ impl NikLpaApp {
         action: PendingRelayAction,
         payload: Value,
     ) -> Result<(), String> {
-        let peer = self.peer.ok_or_else(|| "Peer не спарений".to_owned())?;
-
         match action {
             PendingRelayAction::CardInit => {
                 let eid = self
@@ -240,16 +232,16 @@ impl NikLpaApp {
                     .cloned()
                     .ok_or_else(|| "INIT_REQUEST не створений".to_owned())?;
                 session
-                    .set_outgoing(&self.identity, &peer, &packet)
+                    .set_outgoing(&packet)
                     .map_err(|error| error.to_string())?;
                 self.session = Some(session);
                 self.page = Page::Transfer;
             }
             PendingRelayAction::CardAuthenticateServer => {
-                self.create_and_encrypt_outgoing(RelayStage::EuiccAuth, None, payload)?;
+                self.create_outgoing(RelayStage::EuiccAuth, None, payload)?;
             }
             PendingRelayAction::CardPrepareDownload => {
-                self.create_and_encrypt_outgoing(RelayStage::EuiccPrepared, None, payload)?;
+                self.create_outgoing(RelayStage::EuiccPrepared, None, payload)?;
             }
             PendingRelayAction::CardInstallBpp => {
                 let expected_iccid = payload
@@ -269,13 +261,9 @@ impl NikLpaApp {
                 }));
                 self.verify_after_relay_stop = Some(expected_iccid);
                 if let Some(session) = self.session.as_mut() {
-                    session.status =
-                        "BPP завантажено; очікується незалежна перевірка Profile List".into();
+                    session.status = "BPP завантажено; перевірка Profile List".into();
                 }
-                self.send(
-                    WorkerCommand::StopRelay,
-                    "Закривається PC/SC helper перед незалежною перевіркою",
-                );
+                self.send(WorkerCommand::StopRelay, "Закривається PC/SC relay helper");
             }
             PendingRelayAction::ServerInitiateAuthentication => {
                 let transaction_id = payload
@@ -291,7 +279,7 @@ impl NikLpaApp {
                     .ok_or_else(|| "Некоректна відповідь InitiateAuthentication".to_owned())?;
                 object.insert("matchingId".into(), Value::String(code.matching_id));
                 object.insert("serverAddress".into(), Value::String(code.smdp));
-                self.create_and_encrypt_outgoing(
+                self.create_outgoing(
                     RelayStage::ServerAuth,
                     Some(transaction_id),
                     outgoing_payload,
@@ -308,26 +296,21 @@ impl NikLpaApp {
                             Value::String(self.confirmation_code.clone()),
                         );
                 }
-                self.create_and_encrypt_outgoing(
-                    RelayStage::DownloadPrepare,
-                    None,
-                    outgoing_payload,
-                )?;
+                self.create_outgoing(RelayStage::DownloadPrepare, None, outgoing_payload)?;
             }
             PendingRelayAction::ServerGetBpp => {
-                self.create_and_encrypt_outgoing(RelayStage::BoundProfilePackage, None, payload)?;
+                self.create_outgoing(RelayStage::BoundProfilePackage, None, payload)?;
             }
         }
         Ok(())
     }
 
-    fn create_and_encrypt_outgoing(
+    fn create_outgoing(
         &mut self,
         stage: RelayStage,
         transaction_id: Option<String>,
         payload: Value,
     ) -> Result<(), String> {
-        let peer = self.peer.ok_or_else(|| "Peer не спарений".to_owned())?;
         let session = self
             .session
             .as_mut()
@@ -336,9 +319,9 @@ impl NikLpaApp {
             .create_outgoing(stage, transaction_id, payload)
             .map_err(|error| error.to_string())?;
         session
-            .set_outgoing(&self.identity, &peer, &packet)
+            .set_outgoing(&packet)
             .map_err(|error| error.to_string())?;
-        session.status = format!("{} готовий до передачі", stage.code());
+        session.status = format!("{} готовий", stage.code());
         Ok(())
     }
 
@@ -358,58 +341,41 @@ impl NikLpaApp {
     }
 
     pub(crate) fn start_card_session(&mut self) {
-        if self.peer.is_none() {
-            self.add_log("ПОМИЛКА: спочатку імпортуйте pairing code Server Agent");
-            return;
-        }
         self.session = None;
         self.pending_install_payload = None;
         self.verify_after_relay_stop = None;
+        self.show_outgoing_packet = false;
+        self.show_incoming_packet = false;
         self.start_card_after_chip_info = true;
         self.send(
             WorkerCommand::ChipInfo {
                 executable: PathBuf::from(&self.lpac_path),
                 reader_index: self.selected_reader,
             },
-            "Читається EID перед створенням Card Agent сесії",
+            "Читається EID",
         );
     }
 
     pub(crate) fn start_server_session(&mut self) {
-        if self.peer.is_none() {
-            self.add_log("ПОМИЛКА: спочатку імпортуйте pairing code Card Agent");
-            return;
-        }
         if let Err(error) = ActivationCode::parse(self.activation_code.clone()) {
             self.add_log(format!("ПОМИЛКА activation code: {error}"));
             return;
         }
         self.session = None;
         self.server_bootstrap_input.zeroize();
+        self.show_bootstrap_packet = false;
+        self.show_outgoing_packet = false;
+        self.show_incoming_packet = false;
         self.start_relay(RelayAgentRole::Server);
         self.page = Page::Transfer;
     }
 
-    pub(crate) fn pair_peer(&mut self) {
-        match PeerIdentity::from_pairing_code(&self.peer_code_input) {
-            Ok(peer) => {
-                self.peer = Some(peer);
-                self.add_log("Peer pairing code прийнято");
-            }
-            Err(error) => self.add_log(format!("ПОМИЛКА pairing: {error}")),
-        }
-    }
-
     pub(crate) fn accept_server_bootstrap(&mut self) {
-        let Some(peer) = self.peer else {
-            self.add_log("ПОМИЛКА: peer не спарений");
-            return;
-        };
         let text = std::mem::take(&mut self.server_bootstrap_input);
-        let packet = match self.identity.decrypt::<RelayPacket>(&peer, text.trim()) {
+        let packet = match decode_debug_packet(text.trim()) {
             Ok(packet) => packet,
             Err(error) => {
-                self.add_log(format!("ПОМИЛКА розшифрування INIT_REQUEST: {error}"));
+                self.add_log(format!("ПОМИЛКА INIT_REQUEST JSON: {error}"));
                 return;
             }
         };
@@ -427,7 +393,7 @@ impl NikLpaApp {
                     stage: RelayStage::InitRequest,
                     timestamp: Utc::now(),
                     packet_size: text.trim().len(),
-                    note: "Отримано, розшифровано та перевірено".into(),
+                    note: "Прийнято та перевірено".into(),
                 });
                 self.session = Some(session);
                 self.process_server_init_request();
@@ -437,10 +403,6 @@ impl NikLpaApp {
     }
 
     pub(crate) fn import_session_incoming(&mut self) {
-        let Some(peer) = self.peer else {
-            self.add_log("ПОМИЛКА: peer не спарений");
-            return;
-        };
         let encoded_size = match self.session.as_ref() {
             Some(session) => session.incoming_text.trim().len(),
             None => {
@@ -452,11 +414,11 @@ impl NikLpaApp {
             .session
             .as_ref()
             .expect("session checked above")
-            .decode_incoming(&self.identity, &peer)
+            .decode_incoming()
         {
             Ok(packet) => packet,
             Err(error) => {
-                self.add_log(format!("ПОМИЛКА розшифрування пакета: {error}"));
+                self.add_log(format!("ПОМИЛКА packet JSON: {error}"));
                 return;
             }
         };
@@ -525,9 +487,9 @@ impl NikLpaApp {
             (AppMode::CardAgent, RelayStage::CompleteAck) => {
                 if let Some(session) = self.session.as_mut() {
                     session.completed = true;
-                    session.status = "Server Agent підтвердив завершення relay job".into();
+                    session.status = "COMPLETE_ACK отримано".into();
                 }
-                self.add_log("Relay download повністю завершено: отримано COMPLETE_ACK");
+                self.add_log("Relay download завершено");
             }
             (AppMode::ServerAgent, RelayStage::EuiccAuth) => {
                 let code = match ActivationCode::parse(self.activation_code.clone()) {
@@ -586,18 +548,15 @@ impl NikLpaApp {
                     "iccid": iccid,
                     "receivedAt": Utc::now().to_rfc3339(),
                 });
-                match self.create_and_encrypt_outgoing(RelayStage::CompleteAck, None, ack_payload) {
+                match self.create_outgoing(RelayStage::CompleteAck, None, ack_payload) {
                     Ok(()) => {
                         if let Some(session) = self.session.as_mut() {
                             session.completed = true;
-                            session.status =
-                                "INSTALL_RESULT прийнято; COMPLETE_ACK готовий до передачі".into();
+                            session.status = "COMPLETE_ACK готовий".into();
                         }
-                        self.add_log(
-                            "Server Agent підтвердив INSTALL_RESULT; створено фінальний COMPLETE_ACK",
-                        );
+                        self.add_log("Створено COMPLETE_ACK");
                     }
-                    Err(error) => self.add_log(format!("ПОМИЛКА створення COMPLETE_ACK: {error}")),
+                    Err(error) => self.add_log(format!("ПОМИЛКА COMPLETE_ACK: {error}")),
                 }
             }
             _ => self.add_log(format!(
@@ -623,12 +582,10 @@ impl NikLpaApp {
         if !found {
             self.pending_install_payload = None;
             if let Some(session) = self.session.as_mut() {
-                session.status = format!("ПОМИЛКА: ICCID {expected} відсутній у Profile List");
+                session.status = format!("ICCID {expected} відсутній у Profile List");
                 session.completed = false;
             }
-            self.add_log(format!(
-                "ПОМИЛКА: ICCID {expected} не знайдено після встановлення"
-            ));
+            self.add_log(format!("ПОМИЛКА: ICCID {expected} не знайдено"));
             return;
         }
 
@@ -639,22 +596,16 @@ impl NikLpaApp {
                 return;
             }
         };
-        if let Err(error) =
-            self.create_and_encrypt_outgoing(RelayStage::InstallResult, None, payload)
-        {
-            self.add_log(format!("ПОМИЛКА створення INSTALL_RESULT: {error}"));
+        if let Err(error) = self.create_outgoing(RelayStage::InstallResult, None, payload) {
+            self.add_log(format!("ПОМИЛКА INSTALL_RESULT: {error}"));
             return;
         }
         if let Some(session) = self.session.as_mut() {
-            session.status = format!(
-                "ICCID {expected} підтверджено; передайте INSTALL_RESULT на Server Agent і дочекайтесь COMPLETE_ACK"
-            );
+            session.status = format!("ICCID {expected} підтверджено; INSTALL_RESULT готовий");
             session.completed = false;
         }
         self.page = Page::Transfer;
-        self.add_log(format!(
-            "ICCID {expected} перевірено; INSTALL_RESULT готовий до фінальної передачі"
-        ));
+        self.add_log(format!("ICCID {expected} підтверджено"));
     }
 
     pub(crate) fn reset_mode(&mut self, mode: AppMode) {
@@ -670,6 +621,9 @@ impl NikLpaApp {
         self.relay_running = false;
         self.relay_role = None;
         self.server_bootstrap_input.zeroize();
+        self.show_bootstrap_packet = false;
+        self.show_outgoing_packet = false;
+        self.show_incoming_packet = false;
     }
 
     pub(crate) fn stop_relay(&mut self) {
