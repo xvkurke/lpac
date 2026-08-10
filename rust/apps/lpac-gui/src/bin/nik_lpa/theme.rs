@@ -6,6 +6,15 @@ pub const BRAND_RED: egui::Color32 = egui::Color32::from_rgb(239, 35, 60); // Ac
 pub const SUCCESS: egui::Color32 = egui::Color32::from_rgb(3, 152, 85); // Success/600
 pub const WARNING: egui::Color32 = egui::Color32::from_rgb(220, 104, 3); // Warning/600
 
+pub const CONTENT_MAX_WIDTH: f32 = 830.0;
+pub const PAGE_GUTTER: f32 = 24.0;
+pub const PAGE_GUTTER_COMPACT: f32 = 16.0;
+pub const CARD_PADDING: f32 = 24.0;
+pub const COMPACT_CARD_PADDING: f32 = 16.0;
+pub const CONTROL_HEIGHT: f32 = 44.0;
+pub const CARD_RADIUS: f32 = 12.0;
+pub const CONTROL_RADIUS: f32 = 8.0;
+
 const LIGHT_APP: egui::Color32 = egui::Color32::from_rgb(242, 244, 247); // Gray/100
 const LIGHT_SURFACE: egui::Color32 = egui::Color32::WHITE;
 const LIGHT_SUBTLE: egui::Color32 = egui::Color32::from_rgb(249, 250, 251); // Gray/50
@@ -20,6 +29,25 @@ const DARK_CONTROL: egui::Color32 = egui::Color32::from_rgb(27, 50, 84); // Main
 const DARK_BORDER: egui::Color32 = egui::Color32::from_rgb(39, 67, 108); // Main/600
 const DARK_TEXT: egui::Color32 = egui::Color32::from_rgb(240, 244, 255); // Main/100
 const DARK_MUTED: egui::Color32 = egui::Color32::from_rgb(162, 171, 200); // Main/300
+
+pub fn install_fonts(context: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "Roboto".to_owned(),
+        egui::FontData::from_static(aetna_fonts_roboto::ROBOTO_REGULAR).into(),
+    );
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "Roboto".to_owned());
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .insert(0, "Roboto".to_owned());
+    context.set_fonts(fonts);
+}
 
 pub fn configure(context: &egui::Context, dark: bool) {
     let selected_theme = if dark {
@@ -69,7 +97,7 @@ pub fn configure(context: &egui::Context, dark: bool) {
     let mut style = (*context.style_of(selected_theme)).clone();
     style.spacing.item_spacing = egui::vec2(8.0, 8.0);
     style.spacing.button_padding = egui::vec2(16.0, 9.0);
-    style.spacing.interact_size.y = 44.0;
+    style.spacing.interact_size.y = CONTROL_HEIGHT;
     style
         .text_styles
         .insert(egui::TextStyle::Heading, egui::FontId::proportional(22.0));
