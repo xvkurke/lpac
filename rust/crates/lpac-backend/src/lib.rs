@@ -2,6 +2,8 @@ use anyhow::{Context, Result, anyhow};
 use lpac_core::ActivationCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     env,
     ffi::OsStr,
@@ -9,8 +11,6 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
 use zeroize::Zeroizing;
 
 #[cfg(windows)]
