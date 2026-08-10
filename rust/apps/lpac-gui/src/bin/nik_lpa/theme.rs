@@ -5,9 +5,6 @@ pub const PRIMARY_HOVER: egui::Color32 = egui::Color32::from_rgb(23, 92, 211); /
 pub const BRAND_RED: egui::Color32 = egui::Color32::from_rgb(239, 35, 60); // Accent/500
 pub const SUCCESS: egui::Color32 = egui::Color32::from_rgb(3, 152, 85); // Success/600
 pub const WARNING: egui::Color32 = egui::Color32::from_rgb(220, 104, 3); // Warning/600
-pub const ERROR: egui::Color32 = egui::Color32::from_rgb(217, 45, 32); // Error/600
-pub const ACCENT: egui::Color32 = PRIMARY;
-pub const MUTED: egui::Color32 = egui::Color32::from_rgb(102, 112, 133); // Gray/500
 
 const LIGHT_APP: egui::Color32 = egui::Color32::from_rgb(242, 244, 247); // Gray/100
 const LIGHT_SURFACE: egui::Color32 = egui::Color32::WHITE;
