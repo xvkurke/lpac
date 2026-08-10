@@ -28,15 +28,6 @@ impl AppMode {
             Self::ServerAgent => "Server Agent",
         }
     }
-
-    pub fn description(self) -> &'static str {
-        match self {
-            Self::Welcome => "Оберіть режим роботи",
-            Self::Local => "PC/SC + SM-DP+",
-            Self::CardAgent => "PC/SC / eUICC",
-            Self::ServerAgent => "SM-DP+ / ES9+",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
