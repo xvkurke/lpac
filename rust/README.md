@@ -10,9 +10,11 @@ The current application supports three modes:
 
 The primary executable is `nik-lpa.exe`.
 
+For repository-wide documentation start at [`docs/README.md`](../docs/README.md).
+
 ## Current staged relay
 
-The relay is real, resumable at the application layer, and uses long-lived C helper processes:
+The relay uses long-lived C helper processes:
 
 ```text
 lpac relay card-agent
@@ -40,18 +42,18 @@ INSTALL_RESULT
 COMPLETE_ACK
 ```
 
-See [the full relay walkthrough](../docs/NIK-LPA-RSP-RELAY.md) for the complete sequence, payloads, validation rules, and Mermaid diagrams.
+See [the detailed relay document](../docs/NIK-LPA-RSP-RELAY.md) for functions, input/output data, certificate roles, APDU communication, validation and BPP installation.
 
 ## Runtime isolation
 
-Card Agent is started with:
+Card Agent:
 
 ```text
 LPAC_APDU=pcsc
 LPAC_HTTP=stdio
 ```
 
-Server Agent is started with:
+Server Agent:
 
 ```text
 LPAC_APDU=stdio
@@ -78,7 +80,7 @@ The primary GUI is organized into:
 - `theme.rs` — NIK colors, Roboto typography, spacing and geometry tokens;
 - `widgets.rs` — reusable UI primitives.
 
-See [the architecture document](../docs/NIK-LPA-ARCHITECTURE.md) for the complete review.
+See [the architecture document](../docs/NIK-LPA-ARCHITECTURE.md) and [repository guide](../docs/NIK-LPA-REPOSITORY-GUIDE.md).
 
 ## UI design contract
 
@@ -97,6 +99,12 @@ The Windows UI uses:
 - coordinated light and dark palettes.
 
 Do not introduce page-local colors, arbitrary radii, or ad-hoc control heights. Reuse `theme.rs` and `widgets.rs`.
+
+## Windows-only build policy
+
+NIK product CI produces Windows artifacts only. Portable upstream source can remain, but Linux/Linux ARM/QMI, Windows ARM and macOS product artifacts are not part of the active NIK build matrix.
+
+See [Windows build pipeline](../docs/NIK-LPA-WINDOWS-BUILD.md).
 
 ## Build and test
 
@@ -141,6 +149,8 @@ The core acceptance scenario is two application instances:
 6. Server Agent receives `INSTALL_RESULT`.
 7. Card Agent receives `COMPLETE_ACK`.
 8. Both sides report completion.
+
+The future STM32 implementation should replace only the Card Agent execution side. See [STM32/eUICC integration](../docs/NIK-LPA-STM32-EUICC.md).
 
 ## Security note
 
