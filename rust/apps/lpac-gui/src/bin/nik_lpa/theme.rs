@@ -6,8 +6,6 @@ pub const BRAND_RED: egui::Color32 = egui::Color32::from_rgb(239, 35, 60); // Ac
 pub const SUCCESS: egui::Color32 = egui::Color32::from_rgb(3, 152, 85); // Success/600
 pub const WARNING: egui::Color32 = egui::Color32::from_rgb(220, 104, 3); // Warning/600
 
-pub const CONTENT_MAX_WIDTH: f32 = 830.0;
-pub const PAGE_GUTTER: f32 = 24.0;
 pub const CARD_PADDING: f32 = 24.0;
 pub const COMPACT_CARD_PADDING: f32 = 16.0;
 pub const CONTROL_HEIGHT: f32 = 44.0;
