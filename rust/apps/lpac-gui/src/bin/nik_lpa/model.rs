@@ -86,6 +86,7 @@ impl SessionSide {
             (Self::Card, Some(RelayStage::InitRequest)) => Some(RelayStage::ServerAuth),
             (Self::Card, Some(RelayStage::EuiccAuth)) => Some(RelayStage::DownloadPrepare),
             (Self::Card, Some(RelayStage::EuiccPrepared)) => Some(RelayStage::BoundProfilePackage),
+            (Self::Card, Some(RelayStage::InstallResult)) => Some(RelayStage::CompleteAck),
             (Self::Server, None) => Some(RelayStage::InitRequest),
             (Self::Server, Some(RelayStage::ServerAuth)) => Some(RelayStage::EuiccAuth),
             (Self::Server, Some(RelayStage::DownloadPrepare)) => Some(RelayStage::EuiccPrepared),
@@ -110,6 +111,7 @@ impl SessionSide {
                 RelayStage::ServerAuth
                     | RelayStage::DownloadPrepare
                     | RelayStage::BoundProfilePackage
+                    | RelayStage::CompleteAck
             ),
         }
     }
