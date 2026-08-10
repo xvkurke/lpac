@@ -209,7 +209,11 @@ impl NikLpaApp {
             });
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 toggle_theme = ui
-                    .button(if self.dark_mode { "Світла" } else { "Темна" })
+                    .button(if self.dark_mode {
+                        "Світла"
+                    } else {
+                        "Темна"
+                    })
                     .clicked();
                 if self.busy {
                     ui.spinner();
@@ -280,7 +284,9 @@ impl NikLpaApp {
             ui.heading("Швидкий старт");
             match self.mode {
                 AppMode::CardAgent => {
-                    ui.label("1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.");
+                    ui.label(
+                        "1. Виберіть рідер. 2. Спарте Server Agent. 3. Створіть INIT_REQUEST.",
+                    );
                     if ui.button("Перейти до ручної передачі").clicked() {
                         next_page = Some(Page::Transfer);
                     }
