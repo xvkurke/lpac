@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use eframe::egui;
 
 pub const PRIMARY: egui::Color32 = egui::Color32::from_rgb(21, 112, 239); // Blue/600
@@ -27,15 +28,19 @@ const DARK_BORDER: egui::Color32 = egui::Color32::from_rgb(39, 67, 108); // Main
 const DARK_TEXT: egui::Color32 = egui::Color32::from_rgb(240, 244, 255); // Main/100
 const DARK_MUTED: egui::Color32 = egui::Color32::from_rgb(162, 171, 200); // Main/300
 
-/// Installs the bundled Roboto face before any NIK LPA UI is rendered.
+/// Installs the vendored Roboto face before any NIK LPA UI is rendered.
 ///
-/// The font bytes come from the public `aetna-fonts` Roboto feature, so Card
-/// Agent does not depend on an OS-installed font or a network fetch at runtime.
+/// Roboto is stored as base64-encoded source data and decoded directly into
+/// egui's font database. The resulting executable has no dependency on an
+/// OS-installed font or a runtime network request.
 pub fn install_fonts(context: &egui::Context) {
+    let roboto = STANDARD
+        .decode(crate::roboto_data::ROBOTO_BASE64)
+        .expect("vendored Roboto data must be valid base64");
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
         "Roboto".to_owned(),
-        egui::FontData::from_static(aetna_fonts::ROBOTO_REGULAR).into(),
+        egui::FontData::from_owned(roboto).into(),
     );
     fonts
         .families
