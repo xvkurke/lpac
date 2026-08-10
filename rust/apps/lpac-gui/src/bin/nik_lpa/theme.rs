@@ -29,13 +29,13 @@ const DARK_MUTED: egui::Color32 = egui::Color32::from_rgb(162, 171, 200); // Mai
 
 /// Installs the bundled Roboto face before any NIK LPA UI is rendered.
 ///
-/// The font bytes come from the `aetna-fonts-roboto` dependency, so Card Agent
-/// does not depend on an OS-installed font or a network fetch at runtime.
+/// The font bytes come from the public `aetna-fonts` Roboto feature, so Card
+/// Agent does not depend on an OS-installed font or a network fetch at runtime.
 pub fn install_fonts(context: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
     fonts.font_data.insert(
         "Roboto".to_owned(),
-        egui::FontData::from_static(aetna_fonts_roboto::ROBOTO_REGULAR).into(),
+        egui::FontData::from_static(aetna_fonts::ROBOTO_REGULAR).into(),
     );
     fonts
         .families
