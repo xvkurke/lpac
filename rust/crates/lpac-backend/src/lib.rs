@@ -9,7 +9,12 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
 };
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use zeroize::Zeroizing;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LpacPayload {
@@ -290,6 +295,7 @@ impl LegacyLpacBackend {
             .stderr(Stdio::piped())
             .env("LPAC_APDU", "pcsc");
         self.configure_runtime_environment(&mut command)?;
+        configure_hidden_child(&mut command);
 
         if stdin.is_some() {
             command.stdin(Stdio::piped());
@@ -390,6 +396,14 @@ impl LegacyLpacBackend {
         ))
     }
 }
+
+#[cfg(windows)]
+fn configure_hidden_child(command: &mut Command) {
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_child(_: &mut Command) {}
 
 #[cfg(test)]
 mod tests {
