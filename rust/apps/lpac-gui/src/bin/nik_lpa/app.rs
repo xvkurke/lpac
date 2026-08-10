@@ -2,7 +2,6 @@ use std::{collections::VecDeque, env, path::PathBuf, time::Duration};
 
 use eframe::egui;
 use lpac_backend::PcscReader;
-use lpac_core::secure_relay::{DeviceIdentity, PeerIdentity};
 use lpac_relay_backend::RelayAgentRole;
 use serde_json::Value;
 use uuid::Uuid;
@@ -37,10 +36,7 @@ pub struct NikLpaApp {
     pub(crate) lpac_path: String,
     pub(crate) readers: Vec<PcscReader>,
     pub(crate) selected_reader: u32,
-    pub(crate) identity: DeviceIdentity,
-    pub(crate) peer_code_input: String,
     pub(crate) server_bootstrap_input: String,
-    pub(crate) peer: Option<PeerIdentity>,
     pub(crate) relay_running: bool,
     pub(crate) relay_role: Option<RelayAgentRole>,
     pub(crate) session: Option<RelaySession>,
@@ -58,6 +54,9 @@ pub struct NikLpaApp {
     pub(crate) profiles_output: String,
     pub(crate) log: VecDeque<String>,
     pub(crate) dark_mode: bool,
+    pub(crate) show_outgoing_packet: bool,
+    pub(crate) show_incoming_packet: bool,
+    pub(crate) show_bootstrap_packet: bool,
 }
 
 impl Default for NikLpaApp {
@@ -69,10 +68,7 @@ impl Default for NikLpaApp {
             lpac_path: bundled_lpac_path(),
             readers: Vec::new(),
             selected_reader: 0,
-            identity: DeviceIdentity::generate(),
-            peer_code_input: String::new(),
             server_bootstrap_input: String::new(),
-            peer: None,
             relay_running: false,
             relay_role: None,
             session: None,
@@ -89,7 +85,10 @@ impl Default for NikLpaApp {
             chip_info_output: String::new(),
             profiles_output: String::new(),
             log: VecDeque::new(),
-            dark_mode: false,
+            dark_mode: true,
+            show_outgoing_packet: false,
+            show_incoming_packet: false,
+            show_bootstrap_packet: false,
         }
     }
 }
@@ -100,7 +99,6 @@ impl Drop for NikLpaApp {
         self.confirmation_code.zeroize();
         self.local_activation_code.zeroize();
         self.local_confirmation_code.zeroize();
-        self.peer_code_input.zeroize();
         self.server_bootstrap_input.zeroize();
     }
 }
