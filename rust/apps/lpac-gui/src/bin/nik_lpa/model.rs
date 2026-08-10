@@ -335,10 +335,13 @@ mod tests {
 
     #[test]
     fn plaintext_debug_packet_round_trips() {
-        let mut session = RelaySession::new_card("eid-hash".into(), json!({
-            "euiccChallenge": "visible",
-            "euiccInfo1": "visible-too"
-        }))
+        let mut session = RelaySession::new_card(
+            "eid-hash".into(),
+            json!({
+                "euiccChallenge": "visible",
+                "euiccInfo1": "visible-too"
+            }),
+        )
         .unwrap();
         let packet = session.last_packet().cloned().unwrap();
         session.set_outgoing(&packet).unwrap();
