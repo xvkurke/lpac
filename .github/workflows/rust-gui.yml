@@ -1,6 +1,7 @@
 name: Rust GUI Windows
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - "rust/**"
